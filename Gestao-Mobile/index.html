@@ -4731,14 +4731,19 @@ async function applyAuthenticatedSession(user){
   }
   initOnlineUsersUi();
   startPresenceTracking();
+  if(window.forceFullSyncAfterLogin){
+    setTimeout(() => { window.forceFullSyncAfterLogin(); }, 250);
+  }
 }
 function attachPrimaryAuthListener(){
   if(authListenerAttached) return;
   authListenerAttached = true;
   onAuthStateChanged(firebaseAuth, user => {
     if(user && !user.isAnonymous){
+      window.lastAuthenticatedUid = user.uid || null;
       applyAuthenticatedSession(user).catch(err => console.error('Erro ao aplicar sessão autenticada:', err));
     }else if(!currentUsername){
+      window.lastAuthenticatedUid = null;
       stopPresenceTracking();
       if(window.showLogin) window.showLogin();
     }
@@ -4758,14 +4763,24 @@ async function initFirebaseEmailLogin(){
       const email = String($('loginUsername')?.value || '').trim();
       const password = String($('loginPassword')?.value || '');
       const errBox = $('loginError');
+      const submitBtn = loginFormEl.querySelector('button[type="submit"]');
+      const previousLabel = submitBtn ? submitBtn.textContent : '';
       if(errBox) errBox.textContent = '';
       if(!email || !password){
         if(errBox) errBox.textContent = 'Preenche email e palavra-passe.';
         return;
       }
       try{
+        if(submitBtn){
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'A entrar...';
+        }
         await ensureFirebaseCore();
-        await signInWithEmailAndPassword(firebaseAuth, email, password);
+        const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+        const signedUser = credential?.user || await waitForFirebaseUser(8000);
+        if(signedUser && !signedUser.isAnonymous){
+          await applyAuthenticatedSession(signedUser);
+        }
       }catch(err){
         console.error('Erro no login Firebase:', err);
         const code = String(err?.code || '');
@@ -4773,8 +4788,14 @@ async function initFirebaseEmailLogin(){
           : code === 'auth/invalid-email' ? 'Email inválido.'
           : code === 'auth/user-disabled' ? 'Utilizador desativado.'
           : code === 'auth/too-many-requests' ? 'Demasiadas tentativas. Tenta novamente mais tarde.'
+          : code === 'auth/network-request-failed' ? 'Sem ligação à internet.'
           : 'Não foi possível iniciar sessão.';
         if(errBox) errBox.textContent = msg;
+      }finally{
+        if(submitBtn){
+          submitBtn.disabled = false;
+          submitBtn.textContent = previousLabel || 'Entrar';
+        }
       }
     });
   }
@@ -7617,6 +7638,15 @@ window.startApp = function(role, username){
   setRoleUI();
   renderAll();
   initFirebaseSync().catch(err => console.error(err));
+};
+window.forceFullSyncAfterLogin = async function(){
+  try{
+    await ensureFirebaseCore();
+    await initFirebaseSync();
+    try{ renderAll(); }catch(e){}
+  }catch(err){
+    console.error('Falha no sync total após login:', err);
+  }
 };
 
 
