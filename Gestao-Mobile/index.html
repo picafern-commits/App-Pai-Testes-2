@@ -4529,6 +4529,7 @@ function attachRealtimeListeners(){
       const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setter(rows);
       saveLocal();
+      setSyncMessage('Firebase Sync', 'ok');
       if (currentRole) renderAll();
     }, err => {
       console.error(`Snapshot ${name} failed:`, err);
@@ -6162,8 +6163,6 @@ window.deleteTrabalho = async function(id){
     trabalhos = trabalhos.filter(x=>x.id!==id);
     saveLocal();
     renderAll();
-    forceAppRefresh();
-    forceAppRefresh();
   }catch(err){
     console.error(err);
     setSyncMessage('Erro a apagar no Firebase', 'bad');
@@ -6350,7 +6349,6 @@ window.markAsPaid = async function(id, metodo='Manual', dataPagamento='', valorP
     saveLocal();
     renderAll();
     setTimeout(()=>{ try{ renderAll(); }catch(e){} }, 200);
-    forceAppRefresh();
     return true;
   } catch(err){
     console.error(err);
@@ -6368,7 +6366,6 @@ window.deletePagamento = async function(id){
     pagamentos = pagamentos.filter(x => x.id !== id);
     saveLocal();
     renderAll();
-    forceAppRefresh();
   }catch(err){
     console.error(err);
     setSyncMessage('Erro a apagar no Firebase', 'bad');
@@ -6498,7 +6495,7 @@ $('paymentConfirmBtn')?.addEventListener('click', async ()=>{
     renderAll();
     setTimeout(()=>{ try { renderAll(); } catch(e) {} }, 200);
   } else {
-    alert(`Não foi possível guardar o pagamento na Firebase. ${err?.code ? '(' + err.code + ')' : ''}`.trim());
+    alert('Não foi possível guardar o pagamento na Firebase.');
   }
 });
 
