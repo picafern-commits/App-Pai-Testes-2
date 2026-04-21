@@ -3917,7 +3917,9 @@ function buildProfessionalReportHtml(){
         </thead>
         <tbody>${historyHtml}</tbody>
       </table>
-    </body>
+    <script src="permissions_v1.js"></script>
+<script src="backup_auto.js"></script>
+</body>
   </html>`;
 }
 
@@ -6230,7 +6232,9 @@ td.acoes-col, .acoes-col{
   .online-users-list{padding:10px;max-height:280px;}
 }
 
-</style></head><body>${bodyHtml}</body></html>`); win.document.close(); setTimeout(()=>{ win.focus(); win.print(); },300); }
+</style></head><body>${bodyHtml}<script src="permissions_v1.js"></script>
+<script src="backup_auto.js"></script>
+</body></html>`); win.document.close(); setTimeout(()=>{ win.focus(); win.print(); },300); }
 
 
 function getAgendaDate(t){
@@ -7704,7 +7708,9 @@ function buildProfessionalReportHtml(){
         </thead>
         <tbody>${historyHtml}</tbody>
       </table>
-    </body>
+    <script src="permissions_v1.js"></script>
+<script src="backup_auto.js"></script>
+</body>
   </html>`;
 }
 
@@ -7784,5 +7790,7 @@ function printProfessionalReport(){
     </div>
   </div>
 
+<script src="permissions_v1.js"></script>
+<script src="backup_auto.js"></script>
 </body>
 </html>
