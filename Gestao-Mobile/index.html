@@ -3396,6 +3396,10 @@ async function syncBackupCollectionToFirebase(collectionName, items){
     return { upserts:0, deletes:0 };
   }
   await ensureFirebaseReady();
+  if(typeof firebaseAuth !== 'undefined' && firebaseAuth && !firebaseAuth.currentUser){
+    console.warn('Sem login Firebase → backup não sincronizado para', collectionName);
+    return { upserts:0, deletes:0 };
+  }
   const snap = await getDocs(collection(firestoreDb, collectionName));
   const remoteIds = new Set(snap.docs.map(docSnap => String(docSnap.id)));
   const nextIds = new Set();
@@ -3817,6 +3821,8 @@ function formatEuroValue(v){
   return `${num.toFixed(2)}€`;
 }
 
+function renderDashboardAgenda(){ return; }
+
 function renderAdvancedReports(){
   const avgEl = document.getElementById('reportAvgWorkValue');
   const topEl = document.getElementById('reportTopClientValue');
@@ -4131,7 +4137,7 @@ const firebaseConfig = {
 
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const APP_VERSION = '1.0.6';
@@ -5068,14 +5074,8 @@ async function initFirebaseSync(){
       attachRealtimeListeners();
 
       if(!firebaseAuth.currentUser){
-        try{
-          await signInAnonymously(firebaseAuth);
-        }catch(authErr){
-          console.warn('Anonymous auth indisponível, continuo com Firestore direto:', authErr);
-          if(authErr?.code === 'auth/operation-not-allowed'){
-            setSyncMessage('Firebase Sync (sem auth anónima)', 'warn');
-          }
-        }
+        console.warn('Sem utilizador autenticado na Firebase; a app não vai tentar auth anónima.');
+        setSyncMessage('Firebase Sync (à espera de login)', 'warn');
       }
 
       onAuthStateChanged(firebaseAuth, user => {
@@ -6765,7 +6765,7 @@ function renderRelatorios() {
         .join('')
     : '<div class="report-card">Sem dados para relatório.</div>';
 }
-function renderAll(){ if(!currentRole) return; setRoleUI(); populateClientOptions(); populateClientOptions(); renderDashboard(); renderAlerts(); renderDashboardAgenda(); renderTrabalhos(); renderClientes(); renderPagamentos(); renderRelatorios();
+function renderAll(){ if(!currentRole) return; setRoleUI(); populateClientOptions(); populateClientOptions(); renderDashboard(); renderAlerts(); try{ if(typeof renderDashboardAgenda === 'function') renderDashboardAgenda(); }catch(e){ console.warn('renderDashboardAgenda indisponível:', e); } renderTrabalhos(); renderClientes(); renderPagamentos(); renderRelatorios();
   try{ renderAdvancedReports(); }catch(e){}
   renderManagedUsers();
   updateWorkCodePreview();
