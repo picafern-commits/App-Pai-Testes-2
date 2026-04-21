@@ -4191,7 +4191,250 @@ function buildProfessionalReportHtml(){
         </thead>
         <tbody>${historyHtml}</tbody>
       </table>
-    </body>
+    
+<script>
+(function(){
+  const DAILY_HISTORY_KEY = 'dailyAutoBackupHistory';
+  const DAILY_LAST_KEY = 'dailyAutoBackupLastDate';
+  const DAILY_NOTICE_KEY = 'dailyAutoBackupNoticeShownFor';
+  const DAILY_REMOTE_KEY = 'dailyAutoBackupLastRemote';
+
+  function dailyToday(){
+    try{
+      if(typeof todayLocalDate === 'function') return todayLocalDate();
+    }catch(e){}
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    return new Date(now.getTime() - offset).toISOString().split('T')[0];
+  }
+
+  function dailySnapshot(){
+    try{
+      if(typeof getAppDataSnapshot === 'function') return getAppDataSnapshot();
+    }catch(e){}
+    const trabalhosLista = Array.isArray(window.trabalhos) ? window.trabalhos : JSON.parse(localStorage.getItem('ge_trabalhos') || localStorage.getItem('trabalhos') || '[]');
+    const clientesLista = Array.isArray(window.clientes) ? window.clientes : JSON.parse(localStorage.getItem('ge_clientes') || localStorage.getItem('clientes') || '[]');
+    const pagamentosLista = Array.isArray(window.pagamentos) ? window.pagamentos : JSON.parse(localStorage.getItem('ge_pagamentos') || localStorage.getItem('pagamentos') || '[]');
+    return {
+      trabalhos: trabalhosLista,
+      clientes: clientesLista,
+      pagamentos: pagamentosLista,
+      dataBackup: new Date().toISOString(),
+      versao: String(window.APP_VERSION || '1.0.6')
+    };
+  }
+
+  function dailyFmt(iso){
+    try{
+      if(typeof fmtDate === 'function') return fmtDate(iso);
+    }catch(e){}
+    return iso || '--';
+  }
+
+  function readDailyHistory(){
+    try{
+      const parsed = JSON.parse(localStorage.getItem(DAILY_HISTORY_KEY) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    }catch(e){ return []; }
+  }
+
+  function writeDailyHistory(history){
+    try{ localStorage.setItem(DAILY_HISTORY_KEY, JSON.stringify(history)); }catch(e){}
+  }
+
+  function setDailyDone(dateIso){
+    try{ localStorage.setItem(DAILY_LAST_KEY, dateIso || dailyToday()); }catch(e){}
+  }
+
+  function getDailyDone(){
+    try{ return localStorage.getItem(DAILY_LAST_KEY) || ''; }catch(e){ return ''; }
+  }
+
+  function updateDailyUiLabels(){
+    try{
+      document.querySelectorAll('.backups-premium-pill').forEach(el => el.textContent = 'Diário Automático');
+      document.querySelectorAll('#backupToolsCard h3').forEach(el => {
+        if((el.textContent || '').trim().toLowerCase() === 'backups') el.textContent = 'Backups Diários';
+      });
+      const premiumHeadP = document.querySelector('#backupToolsCard .backups-premium-head p');
+      if(premiumHeadP) premiumHeadP.textContent = 'Exportação automática diária e recuperação rápida dos dados da app.';
+      const downloadBtns = Array.from(document.querySelectorAll('button')).filter(btn => (btn.textContent || '').includes('Download Último'));
+      downloadBtns.forEach(btn => btn.textContent = 'Download Último Diário');
+    }catch(e){}
+  }
+
+  window.refreshBackupStatusUi = function(){
+    const lastEl = document.getElementById('backupLastStatus');
+    const countEl = document.getElementById('backupCountStatus');
+    const dailyBackups = readDailyHistory();
+    const last = getDailyDone();
+    if(lastEl) lastEl.textContent = last ? dailyFmt(last) : '--';
+    if(countEl) countEl.textContent = String(dailyBackups.length);
+    try{ window.updateBackupWeekIndicator(); }catch(e){}
+    updateDailyUiLabels();
+  };
+
+  window.updateBackupWeekIndicator = function(){
+    const badge = document.getElementById('backupWeekBadge');
+    const weekStatus = document.getElementById('backupWeekStatus');
+    const lastStatus = document.getElementById('backupLastStatus');
+    const countStatus = document.getElementById('backupCountStatus');
+    const backups = readDailyHistory();
+    const lastDateIso = getDailyDone();
+    const doneToday = lastDateIso === dailyToday();
+    if(lastStatus) lastStatus.textContent = lastDateIso ? dailyFmt(lastDateIso) : '--';
+    if(countStatus) countStatus.textContent = String(backups.length);
+    if(doneToday){
+      if(weekStatus) weekStatus.textContent = 'Backup diário feito';
+      if(badge){ badge.textContent = 'Feito hoje'; badge.classList.remove('warn'); badge.classList.add('ok'); }
+    }else{
+      if(weekStatus) weekStatus.textContent = 'Falta backup diário';
+      if(badge){ badge.textContent = 'Falta hoje'; badge.classList.remove('ok'); badge.classList.add('warn'); }
+    }
+    updateDailyUiLabels();
+  };
+
+  async function pushDailyBackupToFirebase(entry){
+    if(typeof window.upsertRemote !== 'function') throw new Error('upsert-remote-indisponivel');
+    const dateKey = entry.backupDate;
+    const meta = {
+      id: `daily-${dateKey}`,
+      backupDate: dateKey,
+      createdAt: entry.createdAt,
+      source: 'automatic-daily',
+      appVersion: entry.appVersion,
+      currentUsername: entry.currentUsername,
+      currentRole: entry.currentRole,
+      totals: entry.totals
+    };
+    await window.upsertRemote('daily_backups', meta);
+    await window.upsertRemote('daily_backups_payloads', {
+      id: `daily-${dateKey}-trabalhos`,
+      backupDate: dateKey,
+      segment: 'trabalhos',
+      count: entry.totals.trabalhos,
+      createdAt: entry.createdAt,
+      items: entry.payload.trabalhos
+    });
+    await window.upsertRemote('daily_backups_payloads', {
+      id: `daily-${dateKey}-clientes`,
+      backupDate: dateKey,
+      segment: 'clientes',
+      count: entry.totals.clientes,
+      createdAt: entry.createdAt,
+      items: entry.payload.clientes
+    });
+    await window.upsertRemote('daily_backups_payloads', {
+      id: `daily-${dateKey}-pagamentos`,
+      backupDate: dateKey,
+      segment: 'pagamentos',
+      count: entry.totals.pagamentos,
+      createdAt: entry.createdAt,
+      items: entry.payload.pagamentos
+    });
+    try{ localStorage.setItem(DAILY_REMOTE_KEY, entry.createdAt); }catch(e){}
+  }
+
+  window.mostrarAvisoBackup = function(remoteOk){
+    const aviso = document.createElement('div');
+    aviso.innerHTML = `
+      <div style="position:fixed;bottom:20px;right:20px;background:#0f172a;border:1px solid rgba(255,255,255,0.12);padding:12px 16px;border-radius:14px;z-index:9999;box-shadow:0 10px 24px rgba(0,0,0,0.32);color:white;font-size:13px;min-width:240px;">
+        Backup diário criado ✔<br>
+        <small style="opacity:.78">${remoteOk ? 'Sincronizado na Firebase' : 'Guardado localmente'}</small>
+      </div>`;
+    document.body.appendChild(aviso);
+    setTimeout(() => aviso.remove(), 4500);
+  };
+
+  window.fazerBackupSexta = async function(force){
+    const today = dailyToday();
+    if(!force && getDailyDone() === today){
+      try{ window.refreshBackupStatusUi(); }catch(e){}
+      return { skipped:true, date:today };
+    }
+
+    const payload = dailySnapshot();
+    const createdAt = new Date().toISOString();
+    const entry = {
+      id: `daily-${today}`,
+      backupDate: today,
+      createdAt,
+      appVersion: String(window.APP_VERSION || '1.0.6'),
+      currentUsername: String(window.currentUsername || ''),
+      currentRole: String(window.currentRole || ''),
+      totals: {
+        trabalhos: Array.isArray(payload.trabalhos) ? payload.trabalhos.length : 0,
+        clientes: Array.isArray(payload.clientes) ? payload.clientes.length : 0,
+        pagamentos: Array.isArray(payload.pagamentos) ? payload.pagamentos.length : 0
+      },
+      payload
+    };
+
+    const history = readDailyHistory().filter(item => item && item.backupDate !== today);
+    history.push(entry);
+    while(history.length > 30) history.shift();
+    writeDailyHistory(history);
+    setDailyDone(today);
+
+    let remoteOk = false;
+    try{
+      await pushDailyBackupToFirebase(entry);
+      remoteOk = true;
+    }catch(err){
+      console.warn('Backup diário automático sem sync remoto:', err);
+    }
+
+    try{ localStorage.setItem('dailyAutoBackupLastPayload', JSON.stringify(entry)); }catch(e){}
+    try{ window.refreshBackupStatusUi(); }catch(e){}
+
+    if(force || localStorage.getItem(DAILY_NOTICE_KEY) !== today){
+      try{ localStorage.setItem(DAILY_NOTICE_KEY, today); }catch(e){}
+      try{ window.mostrarAvisoBackup(remoteOk); }catch(e){}
+    }
+
+    return { skipped:false, remoteOk, entry };
+  };
+
+  window.downloadLatestWeeklyBackup = function(){
+    const backups = readDailyHistory();
+    if(!backups.length){
+      alert('Sem backups diários.');
+      return;
+    }
+    const latest = backups[backups.length - 1];
+    const blob = new Blob([JSON.stringify(latest.payload || latest, null, 2)], { type:'application/json' });
+    const stamp = String(latest.backupDate || dailyToday()).replace(/[^0-9-]/g, '');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `backup-diario-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  };
+
+  async function scheduleDailyBackupCheck(){
+    try{
+      if(!window.currentRole) return;
+      await window.fazerBackupSexta(false);
+    }catch(e){ console.warn('Falha no backup diário automático:', e); }
+  }
+
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden) setTimeout(scheduleDailyBackupCheck, 900);
+  });
+  window.addEventListener('focus', function(){ setTimeout(scheduleDailyBackupCheck, 900); });
+  document.addEventListener('DOMContentLoaded', function(){
+    updateDailyUiLabels();
+    setTimeout(scheduleDailyBackupCheck, 1600);
+  });
+  setTimeout(function(){
+    updateDailyUiLabels();
+    scheduleDailyBackupCheck();
+  }, 2200);
+})();
+</script>
+
+</body>
   </html>`;
 }
 
@@ -6565,7 +6808,250 @@ td.acoes-col, .acoes-col{
   .online-users-list{padding:10px;max-height:280px;}
 }
 
-</style></head><body>${bodyHtml}</body></html>`); win.document.close(); setTimeout(()=>{ win.focus(); win.print(); },300); }
+</style></head><body>${bodyHtml}
+<script>
+(function(){
+  const DAILY_HISTORY_KEY = 'dailyAutoBackupHistory';
+  const DAILY_LAST_KEY = 'dailyAutoBackupLastDate';
+  const DAILY_NOTICE_KEY = 'dailyAutoBackupNoticeShownFor';
+  const DAILY_REMOTE_KEY = 'dailyAutoBackupLastRemote';
+
+  function dailyToday(){
+    try{
+      if(typeof todayLocalDate === 'function') return todayLocalDate();
+    }catch(e){}
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    return new Date(now.getTime() - offset).toISOString().split('T')[0];
+  }
+
+  function dailySnapshot(){
+    try{
+      if(typeof getAppDataSnapshot === 'function') return getAppDataSnapshot();
+    }catch(e){}
+    const trabalhosLista = Array.isArray(window.trabalhos) ? window.trabalhos : JSON.parse(localStorage.getItem('ge_trabalhos') || localStorage.getItem('trabalhos') || '[]');
+    const clientesLista = Array.isArray(window.clientes) ? window.clientes : JSON.parse(localStorage.getItem('ge_clientes') || localStorage.getItem('clientes') || '[]');
+    const pagamentosLista = Array.isArray(window.pagamentos) ? window.pagamentos : JSON.parse(localStorage.getItem('ge_pagamentos') || localStorage.getItem('pagamentos') || '[]');
+    return {
+      trabalhos: trabalhosLista,
+      clientes: clientesLista,
+      pagamentos: pagamentosLista,
+      dataBackup: new Date().toISOString(),
+      versao: String(window.APP_VERSION || '1.0.6')
+    };
+  }
+
+  function dailyFmt(iso){
+    try{
+      if(typeof fmtDate === 'function') return fmtDate(iso);
+    }catch(e){}
+    return iso || '--';
+  }
+
+  function readDailyHistory(){
+    try{
+      const parsed = JSON.parse(localStorage.getItem(DAILY_HISTORY_KEY) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    }catch(e){ return []; }
+  }
+
+  function writeDailyHistory(history){
+    try{ localStorage.setItem(DAILY_HISTORY_KEY, JSON.stringify(history)); }catch(e){}
+  }
+
+  function setDailyDone(dateIso){
+    try{ localStorage.setItem(DAILY_LAST_KEY, dateIso || dailyToday()); }catch(e){}
+  }
+
+  function getDailyDone(){
+    try{ return localStorage.getItem(DAILY_LAST_KEY) || ''; }catch(e){ return ''; }
+  }
+
+  function updateDailyUiLabels(){
+    try{
+      document.querySelectorAll('.backups-premium-pill').forEach(el => el.textContent = 'Diário Automático');
+      document.querySelectorAll('#backupToolsCard h3').forEach(el => {
+        if((el.textContent || '').trim().toLowerCase() === 'backups') el.textContent = 'Backups Diários';
+      });
+      const premiumHeadP = document.querySelector('#backupToolsCard .backups-premium-head p');
+      if(premiumHeadP) premiumHeadP.textContent = 'Exportação automática diária e recuperação rápida dos dados da app.';
+      const downloadBtns = Array.from(document.querySelectorAll('button')).filter(btn => (btn.textContent || '').includes('Download Último'));
+      downloadBtns.forEach(btn => btn.textContent = 'Download Último Diário');
+    }catch(e){}
+  }
+
+  window.refreshBackupStatusUi = function(){
+    const lastEl = document.getElementById('backupLastStatus');
+    const countEl = document.getElementById('backupCountStatus');
+    const dailyBackups = readDailyHistory();
+    const last = getDailyDone();
+    if(lastEl) lastEl.textContent = last ? dailyFmt(last) : '--';
+    if(countEl) countEl.textContent = String(dailyBackups.length);
+    try{ window.updateBackupWeekIndicator(); }catch(e){}
+    updateDailyUiLabels();
+  };
+
+  window.updateBackupWeekIndicator = function(){
+    const badge = document.getElementById('backupWeekBadge');
+    const weekStatus = document.getElementById('backupWeekStatus');
+    const lastStatus = document.getElementById('backupLastStatus');
+    const countStatus = document.getElementById('backupCountStatus');
+    const backups = readDailyHistory();
+    const lastDateIso = getDailyDone();
+    const doneToday = lastDateIso === dailyToday();
+    if(lastStatus) lastStatus.textContent = lastDateIso ? dailyFmt(lastDateIso) : '--';
+    if(countStatus) countStatus.textContent = String(backups.length);
+    if(doneToday){
+      if(weekStatus) weekStatus.textContent = 'Backup diário feito';
+      if(badge){ badge.textContent = 'Feito hoje'; badge.classList.remove('warn'); badge.classList.add('ok'); }
+    }else{
+      if(weekStatus) weekStatus.textContent = 'Falta backup diário';
+      if(badge){ badge.textContent = 'Falta hoje'; badge.classList.remove('ok'); badge.classList.add('warn'); }
+    }
+    updateDailyUiLabels();
+  };
+
+  async function pushDailyBackupToFirebase(entry){
+    if(typeof window.upsertRemote !== 'function') throw new Error('upsert-remote-indisponivel');
+    const dateKey = entry.backupDate;
+    const meta = {
+      id: `daily-${dateKey}`,
+      backupDate: dateKey,
+      createdAt: entry.createdAt,
+      source: 'automatic-daily',
+      appVersion: entry.appVersion,
+      currentUsername: entry.currentUsername,
+      currentRole: entry.currentRole,
+      totals: entry.totals
+    };
+    await window.upsertRemote('daily_backups', meta);
+    await window.upsertRemote('daily_backups_payloads', {
+      id: `daily-${dateKey}-trabalhos`,
+      backupDate: dateKey,
+      segment: 'trabalhos',
+      count: entry.totals.trabalhos,
+      createdAt: entry.createdAt,
+      items: entry.payload.trabalhos
+    });
+    await window.upsertRemote('daily_backups_payloads', {
+      id: `daily-${dateKey}-clientes`,
+      backupDate: dateKey,
+      segment: 'clientes',
+      count: entry.totals.clientes,
+      createdAt: entry.createdAt,
+      items: entry.payload.clientes
+    });
+    await window.upsertRemote('daily_backups_payloads', {
+      id: `daily-${dateKey}-pagamentos`,
+      backupDate: dateKey,
+      segment: 'pagamentos',
+      count: entry.totals.pagamentos,
+      createdAt: entry.createdAt,
+      items: entry.payload.pagamentos
+    });
+    try{ localStorage.setItem(DAILY_REMOTE_KEY, entry.createdAt); }catch(e){}
+  }
+
+  window.mostrarAvisoBackup = function(remoteOk){
+    const aviso = document.createElement('div');
+    aviso.innerHTML = `
+      <div style="position:fixed;bottom:20px;right:20px;background:#0f172a;border:1px solid rgba(255,255,255,0.12);padding:12px 16px;border-radius:14px;z-index:9999;box-shadow:0 10px 24px rgba(0,0,0,0.32);color:white;font-size:13px;min-width:240px;">
+        Backup diário criado ✔<br>
+        <small style="opacity:.78">${remoteOk ? 'Sincronizado na Firebase' : 'Guardado localmente'}</small>
+      </div>`;
+    document.body.appendChild(aviso);
+    setTimeout(() => aviso.remove(), 4500);
+  };
+
+  window.fazerBackupSexta = async function(force){
+    const today = dailyToday();
+    if(!force && getDailyDone() === today){
+      try{ window.refreshBackupStatusUi(); }catch(e){}
+      return { skipped:true, date:today };
+    }
+
+    const payload = dailySnapshot();
+    const createdAt = new Date().toISOString();
+    const entry = {
+      id: `daily-${today}`,
+      backupDate: today,
+      createdAt,
+      appVersion: String(window.APP_VERSION || '1.0.6'),
+      currentUsername: String(window.currentUsername || ''),
+      currentRole: String(window.currentRole || ''),
+      totals: {
+        trabalhos: Array.isArray(payload.trabalhos) ? payload.trabalhos.length : 0,
+        clientes: Array.isArray(payload.clientes) ? payload.clientes.length : 0,
+        pagamentos: Array.isArray(payload.pagamentos) ? payload.pagamentos.length : 0
+      },
+      payload
+    };
+
+    const history = readDailyHistory().filter(item => item && item.backupDate !== today);
+    history.push(entry);
+    while(history.length > 30) history.shift();
+    writeDailyHistory(history);
+    setDailyDone(today);
+
+    let remoteOk = false;
+    try{
+      await pushDailyBackupToFirebase(entry);
+      remoteOk = true;
+    }catch(err){
+      console.warn('Backup diário automático sem sync remoto:', err);
+    }
+
+    try{ localStorage.setItem('dailyAutoBackupLastPayload', JSON.stringify(entry)); }catch(e){}
+    try{ window.refreshBackupStatusUi(); }catch(e){}
+
+    if(force || localStorage.getItem(DAILY_NOTICE_KEY) !== today){
+      try{ localStorage.setItem(DAILY_NOTICE_KEY, today); }catch(e){}
+      try{ window.mostrarAvisoBackup(remoteOk); }catch(e){}
+    }
+
+    return { skipped:false, remoteOk, entry };
+  };
+
+  window.downloadLatestWeeklyBackup = function(){
+    const backups = readDailyHistory();
+    if(!backups.length){
+      alert('Sem backups diários.');
+      return;
+    }
+    const latest = backups[backups.length - 1];
+    const blob = new Blob([JSON.stringify(latest.payload || latest, null, 2)], { type:'application/json' });
+    const stamp = String(latest.backupDate || dailyToday()).replace(/[^0-9-]/g, '');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `backup-diario-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  };
+
+  async function scheduleDailyBackupCheck(){
+    try{
+      if(!window.currentRole) return;
+      await window.fazerBackupSexta(false);
+    }catch(e){ console.warn('Falha no backup diário automático:', e); }
+  }
+
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden) setTimeout(scheduleDailyBackupCheck, 900);
+  });
+  window.addEventListener('focus', function(){ setTimeout(scheduleDailyBackupCheck, 900); });
+  document.addEventListener('DOMContentLoaded', function(){
+    updateDailyUiLabels();
+    setTimeout(scheduleDailyBackupCheck, 1600);
+  });
+  setTimeout(function(){
+    updateDailyUiLabels();
+    scheduleDailyBackupCheck();
+  }, 2200);
+})();
+</script>
+
+</body></html>`); win.document.close(); setTimeout(()=>{ win.focus(); win.print(); },300); }
 
 
 function getAgendaDate(t){
@@ -8039,7 +8525,250 @@ function buildProfessionalReportHtml(){
         </thead>
         <tbody>${historyHtml}</tbody>
       </table>
-    </body>
+    
+<script>
+(function(){
+  const DAILY_HISTORY_KEY = 'dailyAutoBackupHistory';
+  const DAILY_LAST_KEY = 'dailyAutoBackupLastDate';
+  const DAILY_NOTICE_KEY = 'dailyAutoBackupNoticeShownFor';
+  const DAILY_REMOTE_KEY = 'dailyAutoBackupLastRemote';
+
+  function dailyToday(){
+    try{
+      if(typeof todayLocalDate === 'function') return todayLocalDate();
+    }catch(e){}
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    return new Date(now.getTime() - offset).toISOString().split('T')[0];
+  }
+
+  function dailySnapshot(){
+    try{
+      if(typeof getAppDataSnapshot === 'function') return getAppDataSnapshot();
+    }catch(e){}
+    const trabalhosLista = Array.isArray(window.trabalhos) ? window.trabalhos : JSON.parse(localStorage.getItem('ge_trabalhos') || localStorage.getItem('trabalhos') || '[]');
+    const clientesLista = Array.isArray(window.clientes) ? window.clientes : JSON.parse(localStorage.getItem('ge_clientes') || localStorage.getItem('clientes') || '[]');
+    const pagamentosLista = Array.isArray(window.pagamentos) ? window.pagamentos : JSON.parse(localStorage.getItem('ge_pagamentos') || localStorage.getItem('pagamentos') || '[]');
+    return {
+      trabalhos: trabalhosLista,
+      clientes: clientesLista,
+      pagamentos: pagamentosLista,
+      dataBackup: new Date().toISOString(),
+      versao: String(window.APP_VERSION || '1.0.6')
+    };
+  }
+
+  function dailyFmt(iso){
+    try{
+      if(typeof fmtDate === 'function') return fmtDate(iso);
+    }catch(e){}
+    return iso || '--';
+  }
+
+  function readDailyHistory(){
+    try{
+      const parsed = JSON.parse(localStorage.getItem(DAILY_HISTORY_KEY) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    }catch(e){ return []; }
+  }
+
+  function writeDailyHistory(history){
+    try{ localStorage.setItem(DAILY_HISTORY_KEY, JSON.stringify(history)); }catch(e){}
+  }
+
+  function setDailyDone(dateIso){
+    try{ localStorage.setItem(DAILY_LAST_KEY, dateIso || dailyToday()); }catch(e){}
+  }
+
+  function getDailyDone(){
+    try{ return localStorage.getItem(DAILY_LAST_KEY) || ''; }catch(e){ return ''; }
+  }
+
+  function updateDailyUiLabels(){
+    try{
+      document.querySelectorAll('.backups-premium-pill').forEach(el => el.textContent = 'Diário Automático');
+      document.querySelectorAll('#backupToolsCard h3').forEach(el => {
+        if((el.textContent || '').trim().toLowerCase() === 'backups') el.textContent = 'Backups Diários';
+      });
+      const premiumHeadP = document.querySelector('#backupToolsCard .backups-premium-head p');
+      if(premiumHeadP) premiumHeadP.textContent = 'Exportação automática diária e recuperação rápida dos dados da app.';
+      const downloadBtns = Array.from(document.querySelectorAll('button')).filter(btn => (btn.textContent || '').includes('Download Último'));
+      downloadBtns.forEach(btn => btn.textContent = 'Download Último Diário');
+    }catch(e){}
+  }
+
+  window.refreshBackupStatusUi = function(){
+    const lastEl = document.getElementById('backupLastStatus');
+    const countEl = document.getElementById('backupCountStatus');
+    const dailyBackups = readDailyHistory();
+    const last = getDailyDone();
+    if(lastEl) lastEl.textContent = last ? dailyFmt(last) : '--';
+    if(countEl) countEl.textContent = String(dailyBackups.length);
+    try{ window.updateBackupWeekIndicator(); }catch(e){}
+    updateDailyUiLabels();
+  };
+
+  window.updateBackupWeekIndicator = function(){
+    const badge = document.getElementById('backupWeekBadge');
+    const weekStatus = document.getElementById('backupWeekStatus');
+    const lastStatus = document.getElementById('backupLastStatus');
+    const countStatus = document.getElementById('backupCountStatus');
+    const backups = readDailyHistory();
+    const lastDateIso = getDailyDone();
+    const doneToday = lastDateIso === dailyToday();
+    if(lastStatus) lastStatus.textContent = lastDateIso ? dailyFmt(lastDateIso) : '--';
+    if(countStatus) countStatus.textContent = String(backups.length);
+    if(doneToday){
+      if(weekStatus) weekStatus.textContent = 'Backup diário feito';
+      if(badge){ badge.textContent = 'Feito hoje'; badge.classList.remove('warn'); badge.classList.add('ok'); }
+    }else{
+      if(weekStatus) weekStatus.textContent = 'Falta backup diário';
+      if(badge){ badge.textContent = 'Falta hoje'; badge.classList.remove('ok'); badge.classList.add('warn'); }
+    }
+    updateDailyUiLabels();
+  };
+
+  async function pushDailyBackupToFirebase(entry){
+    if(typeof window.upsertRemote !== 'function') throw new Error('upsert-remote-indisponivel');
+    const dateKey = entry.backupDate;
+    const meta = {
+      id: `daily-${dateKey}`,
+      backupDate: dateKey,
+      createdAt: entry.createdAt,
+      source: 'automatic-daily',
+      appVersion: entry.appVersion,
+      currentUsername: entry.currentUsername,
+      currentRole: entry.currentRole,
+      totals: entry.totals
+    };
+    await window.upsertRemote('daily_backups', meta);
+    await window.upsertRemote('daily_backups_payloads', {
+      id: `daily-${dateKey}-trabalhos`,
+      backupDate: dateKey,
+      segment: 'trabalhos',
+      count: entry.totals.trabalhos,
+      createdAt: entry.createdAt,
+      items: entry.payload.trabalhos
+    });
+    await window.upsertRemote('daily_backups_payloads', {
+      id: `daily-${dateKey}-clientes`,
+      backupDate: dateKey,
+      segment: 'clientes',
+      count: entry.totals.clientes,
+      createdAt: entry.createdAt,
+      items: entry.payload.clientes
+    });
+    await window.upsertRemote('daily_backups_payloads', {
+      id: `daily-${dateKey}-pagamentos`,
+      backupDate: dateKey,
+      segment: 'pagamentos',
+      count: entry.totals.pagamentos,
+      createdAt: entry.createdAt,
+      items: entry.payload.pagamentos
+    });
+    try{ localStorage.setItem(DAILY_REMOTE_KEY, entry.createdAt); }catch(e){}
+  }
+
+  window.mostrarAvisoBackup = function(remoteOk){
+    const aviso = document.createElement('div');
+    aviso.innerHTML = `
+      <div style="position:fixed;bottom:20px;right:20px;background:#0f172a;border:1px solid rgba(255,255,255,0.12);padding:12px 16px;border-radius:14px;z-index:9999;box-shadow:0 10px 24px rgba(0,0,0,0.32);color:white;font-size:13px;min-width:240px;">
+        Backup diário criado ✔<br>
+        <small style="opacity:.78">${remoteOk ? 'Sincronizado na Firebase' : 'Guardado localmente'}</small>
+      </div>`;
+    document.body.appendChild(aviso);
+    setTimeout(() => aviso.remove(), 4500);
+  };
+
+  window.fazerBackupSexta = async function(force){
+    const today = dailyToday();
+    if(!force && getDailyDone() === today){
+      try{ window.refreshBackupStatusUi(); }catch(e){}
+      return { skipped:true, date:today };
+    }
+
+    const payload = dailySnapshot();
+    const createdAt = new Date().toISOString();
+    const entry = {
+      id: `daily-${today}`,
+      backupDate: today,
+      createdAt,
+      appVersion: String(window.APP_VERSION || '1.0.6'),
+      currentUsername: String(window.currentUsername || ''),
+      currentRole: String(window.currentRole || ''),
+      totals: {
+        trabalhos: Array.isArray(payload.trabalhos) ? payload.trabalhos.length : 0,
+        clientes: Array.isArray(payload.clientes) ? payload.clientes.length : 0,
+        pagamentos: Array.isArray(payload.pagamentos) ? payload.pagamentos.length : 0
+      },
+      payload
+    };
+
+    const history = readDailyHistory().filter(item => item && item.backupDate !== today);
+    history.push(entry);
+    while(history.length > 30) history.shift();
+    writeDailyHistory(history);
+    setDailyDone(today);
+
+    let remoteOk = false;
+    try{
+      await pushDailyBackupToFirebase(entry);
+      remoteOk = true;
+    }catch(err){
+      console.warn('Backup diário automático sem sync remoto:', err);
+    }
+
+    try{ localStorage.setItem('dailyAutoBackupLastPayload', JSON.stringify(entry)); }catch(e){}
+    try{ window.refreshBackupStatusUi(); }catch(e){}
+
+    if(force || localStorage.getItem(DAILY_NOTICE_KEY) !== today){
+      try{ localStorage.setItem(DAILY_NOTICE_KEY, today); }catch(e){}
+      try{ window.mostrarAvisoBackup(remoteOk); }catch(e){}
+    }
+
+    return { skipped:false, remoteOk, entry };
+  };
+
+  window.downloadLatestWeeklyBackup = function(){
+    const backups = readDailyHistory();
+    if(!backups.length){
+      alert('Sem backups diários.');
+      return;
+    }
+    const latest = backups[backups.length - 1];
+    const blob = new Blob([JSON.stringify(latest.payload || latest, null, 2)], { type:'application/json' });
+    const stamp = String(latest.backupDate || dailyToday()).replace(/[^0-9-]/g, '');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `backup-diario-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  };
+
+  async function scheduleDailyBackupCheck(){
+    try{
+      if(!window.currentRole) return;
+      await window.fazerBackupSexta(false);
+    }catch(e){ console.warn('Falha no backup diário automático:', e); }
+  }
+
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden) setTimeout(scheduleDailyBackupCheck, 900);
+  });
+  window.addEventListener('focus', function(){ setTimeout(scheduleDailyBackupCheck, 900); });
+  document.addEventListener('DOMContentLoaded', function(){
+    updateDailyUiLabels();
+    setTimeout(scheduleDailyBackupCheck, 1600);
+  });
+  setTimeout(function(){
+    updateDailyUiLabels();
+    scheduleDailyBackupCheck();
+  }, 2200);
+})();
+</script>
+
+</body>
   </html>`;
 }
 
@@ -8118,6 +8847,249 @@ function printProfessionalReport(){
       </div>
     </div>
   </div>
+
+
+<script>
+(function(){
+  const DAILY_HISTORY_KEY = 'dailyAutoBackupHistory';
+  const DAILY_LAST_KEY = 'dailyAutoBackupLastDate';
+  const DAILY_NOTICE_KEY = 'dailyAutoBackupNoticeShownFor';
+  const DAILY_REMOTE_KEY = 'dailyAutoBackupLastRemote';
+
+  function dailyToday(){
+    try{
+      if(typeof todayLocalDate === 'function') return todayLocalDate();
+    }catch(e){}
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    return new Date(now.getTime() - offset).toISOString().split('T')[0];
+  }
+
+  function dailySnapshot(){
+    try{
+      if(typeof getAppDataSnapshot === 'function') return getAppDataSnapshot();
+    }catch(e){}
+    const trabalhosLista = Array.isArray(window.trabalhos) ? window.trabalhos : JSON.parse(localStorage.getItem('ge_trabalhos') || localStorage.getItem('trabalhos') || '[]');
+    const clientesLista = Array.isArray(window.clientes) ? window.clientes : JSON.parse(localStorage.getItem('ge_clientes') || localStorage.getItem('clientes') || '[]');
+    const pagamentosLista = Array.isArray(window.pagamentos) ? window.pagamentos : JSON.parse(localStorage.getItem('ge_pagamentos') || localStorage.getItem('pagamentos') || '[]');
+    return {
+      trabalhos: trabalhosLista,
+      clientes: clientesLista,
+      pagamentos: pagamentosLista,
+      dataBackup: new Date().toISOString(),
+      versao: String(window.APP_VERSION || '1.0.6')
+    };
+  }
+
+  function dailyFmt(iso){
+    try{
+      if(typeof fmtDate === 'function') return fmtDate(iso);
+    }catch(e){}
+    return iso || '--';
+  }
+
+  function readDailyHistory(){
+    try{
+      const parsed = JSON.parse(localStorage.getItem(DAILY_HISTORY_KEY) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    }catch(e){ return []; }
+  }
+
+  function writeDailyHistory(history){
+    try{ localStorage.setItem(DAILY_HISTORY_KEY, JSON.stringify(history)); }catch(e){}
+  }
+
+  function setDailyDone(dateIso){
+    try{ localStorage.setItem(DAILY_LAST_KEY, dateIso || dailyToday()); }catch(e){}
+  }
+
+  function getDailyDone(){
+    try{ return localStorage.getItem(DAILY_LAST_KEY) || ''; }catch(e){ return ''; }
+  }
+
+  function updateDailyUiLabels(){
+    try{
+      document.querySelectorAll('.backups-premium-pill').forEach(el => el.textContent = 'Diário Automático');
+      document.querySelectorAll('#backupToolsCard h3').forEach(el => {
+        if((el.textContent || '').trim().toLowerCase() === 'backups') el.textContent = 'Backups Diários';
+      });
+      const premiumHeadP = document.querySelector('#backupToolsCard .backups-premium-head p');
+      if(premiumHeadP) premiumHeadP.textContent = 'Exportação automática diária e recuperação rápida dos dados da app.';
+      const downloadBtns = Array.from(document.querySelectorAll('button')).filter(btn => (btn.textContent || '').includes('Download Último'));
+      downloadBtns.forEach(btn => btn.textContent = 'Download Último Diário');
+    }catch(e){}
+  }
+
+  window.refreshBackupStatusUi = function(){
+    const lastEl = document.getElementById('backupLastStatus');
+    const countEl = document.getElementById('backupCountStatus');
+    const dailyBackups = readDailyHistory();
+    const last = getDailyDone();
+    if(lastEl) lastEl.textContent = last ? dailyFmt(last) : '--';
+    if(countEl) countEl.textContent = String(dailyBackups.length);
+    try{ window.updateBackupWeekIndicator(); }catch(e){}
+    updateDailyUiLabels();
+  };
+
+  window.updateBackupWeekIndicator = function(){
+    const badge = document.getElementById('backupWeekBadge');
+    const weekStatus = document.getElementById('backupWeekStatus');
+    const lastStatus = document.getElementById('backupLastStatus');
+    const countStatus = document.getElementById('backupCountStatus');
+    const backups = readDailyHistory();
+    const lastDateIso = getDailyDone();
+    const doneToday = lastDateIso === dailyToday();
+    if(lastStatus) lastStatus.textContent = lastDateIso ? dailyFmt(lastDateIso) : '--';
+    if(countStatus) countStatus.textContent = String(backups.length);
+    if(doneToday){
+      if(weekStatus) weekStatus.textContent = 'Backup diário feito';
+      if(badge){ badge.textContent = 'Feito hoje'; badge.classList.remove('warn'); badge.classList.add('ok'); }
+    }else{
+      if(weekStatus) weekStatus.textContent = 'Falta backup diário';
+      if(badge){ badge.textContent = 'Falta hoje'; badge.classList.remove('ok'); badge.classList.add('warn'); }
+    }
+    updateDailyUiLabels();
+  };
+
+  async function pushDailyBackupToFirebase(entry){
+    if(typeof window.upsertRemote !== 'function') throw new Error('upsert-remote-indisponivel');
+    const dateKey = entry.backupDate;
+    const meta = {
+      id: `daily-${dateKey}`,
+      backupDate: dateKey,
+      createdAt: entry.createdAt,
+      source: 'automatic-daily',
+      appVersion: entry.appVersion,
+      currentUsername: entry.currentUsername,
+      currentRole: entry.currentRole,
+      totals: entry.totals
+    };
+    await window.upsertRemote('daily_backups', meta);
+    await window.upsertRemote('daily_backups_payloads', {
+      id: `daily-${dateKey}-trabalhos`,
+      backupDate: dateKey,
+      segment: 'trabalhos',
+      count: entry.totals.trabalhos,
+      createdAt: entry.createdAt,
+      items: entry.payload.trabalhos
+    });
+    await window.upsertRemote('daily_backups_payloads', {
+      id: `daily-${dateKey}-clientes`,
+      backupDate: dateKey,
+      segment: 'clientes',
+      count: entry.totals.clientes,
+      createdAt: entry.createdAt,
+      items: entry.payload.clientes
+    });
+    await window.upsertRemote('daily_backups_payloads', {
+      id: `daily-${dateKey}-pagamentos`,
+      backupDate: dateKey,
+      segment: 'pagamentos',
+      count: entry.totals.pagamentos,
+      createdAt: entry.createdAt,
+      items: entry.payload.pagamentos
+    });
+    try{ localStorage.setItem(DAILY_REMOTE_KEY, entry.createdAt); }catch(e){}
+  }
+
+  window.mostrarAvisoBackup = function(remoteOk){
+    const aviso = document.createElement('div');
+    aviso.innerHTML = `
+      <div style="position:fixed;bottom:20px;right:20px;background:#0f172a;border:1px solid rgba(255,255,255,0.12);padding:12px 16px;border-radius:14px;z-index:9999;box-shadow:0 10px 24px rgba(0,0,0,0.32);color:white;font-size:13px;min-width:240px;">
+        Backup diário criado ✔<br>
+        <small style="opacity:.78">${remoteOk ? 'Sincronizado na Firebase' : 'Guardado localmente'}</small>
+      </div>`;
+    document.body.appendChild(aviso);
+    setTimeout(() => aviso.remove(), 4500);
+  };
+
+  window.fazerBackupSexta = async function(force){
+    const today = dailyToday();
+    if(!force && getDailyDone() === today){
+      try{ window.refreshBackupStatusUi(); }catch(e){}
+      return { skipped:true, date:today };
+    }
+
+    const payload = dailySnapshot();
+    const createdAt = new Date().toISOString();
+    const entry = {
+      id: `daily-${today}`,
+      backupDate: today,
+      createdAt,
+      appVersion: String(window.APP_VERSION || '1.0.6'),
+      currentUsername: String(window.currentUsername || ''),
+      currentRole: String(window.currentRole || ''),
+      totals: {
+        trabalhos: Array.isArray(payload.trabalhos) ? payload.trabalhos.length : 0,
+        clientes: Array.isArray(payload.clientes) ? payload.clientes.length : 0,
+        pagamentos: Array.isArray(payload.pagamentos) ? payload.pagamentos.length : 0
+      },
+      payload
+    };
+
+    const history = readDailyHistory().filter(item => item && item.backupDate !== today);
+    history.push(entry);
+    while(history.length > 30) history.shift();
+    writeDailyHistory(history);
+    setDailyDone(today);
+
+    let remoteOk = false;
+    try{
+      await pushDailyBackupToFirebase(entry);
+      remoteOk = true;
+    }catch(err){
+      console.warn('Backup diário automático sem sync remoto:', err);
+    }
+
+    try{ localStorage.setItem('dailyAutoBackupLastPayload', JSON.stringify(entry)); }catch(e){}
+    try{ window.refreshBackupStatusUi(); }catch(e){}
+
+    if(force || localStorage.getItem(DAILY_NOTICE_KEY) !== today){
+      try{ localStorage.setItem(DAILY_NOTICE_KEY, today); }catch(e){}
+      try{ window.mostrarAvisoBackup(remoteOk); }catch(e){}
+    }
+
+    return { skipped:false, remoteOk, entry };
+  };
+
+  window.downloadLatestWeeklyBackup = function(){
+    const backups = readDailyHistory();
+    if(!backups.length){
+      alert('Sem backups diários.');
+      return;
+    }
+    const latest = backups[backups.length - 1];
+    const blob = new Blob([JSON.stringify(latest.payload || latest, null, 2)], { type:'application/json' });
+    const stamp = String(latest.backupDate || dailyToday()).replace(/[^0-9-]/g, '');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `backup-diario-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  };
+
+  async function scheduleDailyBackupCheck(){
+    try{
+      if(!window.currentRole) return;
+      await window.fazerBackupSexta(false);
+    }catch(e){ console.warn('Falha no backup diário automático:', e); }
+  }
+
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden) setTimeout(scheduleDailyBackupCheck, 900);
+  });
+  window.addEventListener('focus', function(){ setTimeout(scheduleDailyBackupCheck, 900); });
+  document.addEventListener('DOMContentLoaded', function(){
+    updateDailyUiLabels();
+    setTimeout(scheduleDailyBackupCheck, 1600);
+  });
+  setTimeout(function(){
+    updateDailyUiLabels();
+    scheduleDailyBackupCheck();
+  }, 2200);
+})();
+</script>
 
 </body>
 </html>
