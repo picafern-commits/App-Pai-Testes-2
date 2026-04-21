@@ -3065,11 +3065,15 @@ function recalcLastTrabIdFromList(trabalhosLista){
 }
 
 
-async function waitForFirebaseUser(timeoutMs = 6000){
+async function waitForFirebaseUser(timeoutMs = 15000){
   try{
     if(typeof firebaseAuth === 'undefined' || !firebaseAuth) return null;
     if(firebaseAuth.currentUser) return firebaseAuth.currentUser;
-    if(typeof onAuthStateChanged !== 'function') return null;
+    if(typeof firebaseAuth.authStateReady === 'function'){
+      try{ await Promise.race([firebaseAuth.authStateReady(), new Promise(resolve => setTimeout(resolve, timeoutMs))]); }catch(e){}
+      if(firebaseAuth.currentUser) return firebaseAuth.currentUser;
+    }
+    if(typeof onAuthStateChanged !== 'function') return firebaseAuth.currentUser || null;
     return await new Promise(resolve => {
       let done = false;
       let unsub = null;
@@ -3077,7 +3081,7 @@ async function waitForFirebaseUser(timeoutMs = 6000){
         if(done) return;
         done = true;
         try{ if(typeof unsub === 'function') unsub(); }catch(e){}
-        resolve(user || null);
+        resolve(user || firebaseAuth.currentUser || null);
       };
       const timer = setTimeout(() => finish(firebaseAuth.currentUser || null), timeoutMs);
       try{
@@ -3100,51 +3104,78 @@ async function waitForFirebaseUser(timeoutMs = 6000){
 }
 
 async function syncBackupCollectionToFirebase(collectionName, items){
-  if(!Array.isArray(items)) return { upserts:0, deletes:0, failures:0 };
-  if(typeof ensureFirebaseReady !== 'function' || typeof getDocs !== 'function' || typeof collection !== 'function'){
-    return { upserts:0, deletes:0, failures:0 };
+  if(!Array.isArray(items)) return { upserts:0, deletes:0, failures:0, skipped:false, reason:'' };
+  if(typeof ensureFirebaseReady !== 'function' || typeof getDocs !== 'function' || typeof collection !== 'function' || typeof writeBatch !== 'function'){
+    return { upserts:0, deletes:0, failures:0, skipped:true, reason:'firebase-api-indisponivel' };
   }
+
   await ensureFirebaseReady();
-  const firebaseUser = await waitForFirebaseUser(6000);
+  const firebaseUser = await waitForFirebaseUser(15000);
   if(!firebaseUser){
-    console.warn('Sem utilizador Firebase confirmado; vou tentar sincronizar diretamente para', collectionName);
+    console.warn('Import sem sessão Firebase pronta em', collectionName);
+    return { upserts:0, deletes:0, failures:0, skipped:true, reason:'sem-sessao' };
   }
 
-  const snap = await getDocs(collection(firestoreDb, collectionName));
-  const remoteIds = new Set(snap.docs.map(docSnap => String(docSnap.id)));
-  const nextIds = new Set();
-  let upserts = 0;
-  let deletes = 0;
-  let failures = 0;
-
+  const normalized = [];
   for(const rawItem of items){
     if(!rawItem || typeof rawItem !== 'object') continue;
     const item = { ...rawItem };
     if(!item.id){
       item.id = `${collectionName}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
     }
-    nextIds.add(String(item.id));
+    normalized.push(item);
+  }
+
+  let remoteIds = new Set();
+  try{
+    const snap = await getDocs(collection(firestoreDb, collectionName));
+    remoteIds = new Set((snap.docs || []).map(docSnap => String(docSnap.id)));
+  }catch(err){
+    console.error('Falha ao ler coleção remota antes do import:', collectionName, err);
+    return { upserts:0, deletes:0, failures:normalized.length, skipped:false, reason:err?.code || err?.message || 'read-failed' };
+  }
+
+  const nextIds = new Set(normalized.map(item => String(item.id)));
+  let upserts = 0;
+  let deletes = 0;
+  let failures = 0;
+  let firstError = '';
+
+  const chunkSize = 350;
+  for(let i = 0; i < normalized.length; i += chunkSize){
+    const chunk = normalized.slice(i, i + chunkSize);
+    const batch = writeBatch(firestoreDb);
+    for(const item of chunk){
+      batch.set(doc(firestoreDb, collectionName, item.id), item, { merge:true });
+    }
     try{
-      await upsertRemote(collectionName, item);
-      upserts += 1;
+      await batch.commit();
+      upserts += chunk.length;
     }catch(err){
-      failures += 1;
-      console.error(`Falha ao sincronizar ${collectionName}/${item.id}:`, err);
+      failures += chunk.length;
+      firstError = firstError || (err?.code || err?.message || 'batch-upsert-failed');
+      console.error(`Falha no batch de import ${collectionName}:`, err);
     }
   }
 
-  for(const remoteId of remoteIds){
-    if(!nextIds.has(remoteId)){
-      try{
-        await removeRemote(collectionName, remoteId);
-        deletes += 1;
-      }catch(err){
-        failures += 1;
-        console.error(`Falha ao apagar remoto ${collectionName}/${remoteId}:`, err);
-      }
+  const idsToDelete = Array.from(remoteIds).filter(id => !nextIds.has(id));
+  for(let i = 0; i < idsToDelete.length; i += chunkSize){
+    const chunk = idsToDelete.slice(i, i + chunkSize);
+    const batch = writeBatch(firestoreDb);
+    for(const id of chunk){
+      batch.delete(doc(firestoreDb, collectionName, id));
+    }
+    try{
+      await batch.commit();
+      deletes += chunk.length;
+    }catch(err){
+      failures += chunk.length;
+      firstError = firstError || (err?.code || err?.message || 'batch-delete-failed');
+      console.error(`Falha ao apagar remoto em batch ${collectionName}:`, err);
     }
   }
-  return { upserts, deletes, failures };
+
+  return { upserts, deletes, failures, skipped:false, reason:firstError };
 }
 
 function extractImportArrays(data){
@@ -3209,11 +3240,18 @@ async function importBackupDataObject(data){
     const trabSync = await syncBackupCollectionToFirebase('trabalhos', trabalhos);
     const cliSync = await syncBackupCollectionToFirebase('clientes', clientes);
     const pagSync = await syncBackupCollectionToFirebase('pagamentos', pagamentos);
-    remoteSummary = ` Firebase: ${trabSync.upserts} trabalhos, ${cliSync.upserts} clientes e ${pagSync.upserts} pagamentos sincronizados.${((trabSync.failures||0)+(cliSync.failures||0)+(pagSync.failures||0)) ? ` Falhas: ${(trabSync.failures||0)+(cliSync.failures||0)+(pagSync.failures||0)}.` : ""}`;
-    syncOk = true;
+    const totalFailures = (trabSync.failures||0) + (cliSync.failures||0) + (pagSync.failures||0);
+    const skipped = [trabSync, cliSync, pagSync].every(r => r && r.skipped);
+    const reasons = [trabSync?.reason, cliSync?.reason, pagSync?.reason].filter(Boolean).join(', ');
+    if(skipped){
+      remoteSummary = ` Firebase: sincronização adiada (${reasons || 'sem-sessao'}). Faz login completo e tenta importar novamente.`;
+    }else{
+      remoteSummary = ` Firebase: ${trabSync.upserts} trabalhos, ${cliSync.upserts} clientes e ${pagSync.upserts} pagamentos sincronizados.${totalFailures ? ` Falhas: ${totalFailures}.` : ''}${reasons ? ` Motivo: ${reasons}.` : ''}`;
+      syncOk = totalFailures === 0;
+    }
   }catch(err){
     console.error('Erro ao sincronizar backup para Firebase:', err);
-    remoteSummary = ' Importado localmente, mas houve erro a sincronizar com a Firebase.';
+    remoteSummary = ` Importado localmente, mas houve erro a sincronizar com a Firebase${err?.code ? ` (${err.code})` : ''}.`;
   }
 
   trabalhos = importedTrabalhos.map(item => ({ ...item }));
@@ -3859,7 +3897,7 @@ const firebaseConfig = {
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, onSnapshot, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const APP_VERSION = '1.0.6';
 const STORAGE_KEYS = { trabalhos:'ge_trabalhos', clientes:'ge_clientes', pagamentos:'ge_pagamentos' , lastTrabId:'ge_last_trab_id' };
