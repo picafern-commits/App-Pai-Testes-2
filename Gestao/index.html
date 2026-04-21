@@ -2861,6 +2861,7 @@ td.acoes-col, .acoes-col{
                 <div class="panel-head"><h3>Roles de utilizador</h3></div>
                 <form id="userManagerForm" class="form-grid">
                   <input type="hidden" id="managedUserIndex" />
+                  <div class="field"><label>Nome do utilizador</label><input id="managedDisplayName" type="text" placeholder="Jorge Computador" /></div>
                   <div class="field"><label>Email</label><input id="managedUsername" type="email" placeholder="utilizador@empresa.com" required /></div>
                   <div class="field"><label>Tipo</label><select id="managedRole"><option value="user">User</option><option value="admin">Admin</option><option value="master_admin">Master Admin</option></select></div>
                   <div class="field"><label>Computador</label><select id="managedPcMode"><option value="edit">Pode mexer</option><option value="view">Só ver</option></select></div>
@@ -2878,7 +2879,7 @@ td.acoes-col, .acoes-col{
                 <div class="panel-head"><h3>Lista de utilizadores</h3></div>
                 <div class="table-wrap">
                   <table>
-                    <thead><tr><th>Email</th><th>Tipo</th><th>Computador</th><th>Mobile</th><th>Ações</th></tr></thead>
+                    <thead><tr><th>Nome</th><th>Email</th><th>Tipo</th><th>Computador</th><th>Mobile</th><th>Ações</th></tr></thead>
                     <tbody id="managedUsersTableBody"></tbody>
                   </table>
                 </div>
@@ -4824,6 +4825,7 @@ async function loadManagedUsersFromFirestore(){
     snap.forEach(docSnap => {
       const data = docSnap.data() || {};
       users.push({
+        nome: String(data.nome || data.displayName || '').trim(),
         email: normalizeRoleEmail(data.email || docSnap.id),
         role: normalizeRoleValue(data.role),
         pcMode: normalizeAccessMode(data.pcMode),
@@ -4844,11 +4846,12 @@ async function loadManagedUsersFromFirestore(){
 async function renderManagedUsers(){
   const tbody = $('managedUsersTableBody');
   if(!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="5">A carregar...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="6">A carregar...</td></tr>';
   const users = await loadManagedUsersFromFirestore();
   const modeLabel = (mode) => normalizeAccessMode(mode) === 'view' ? 'Só ver' : 'Pode mexer';
   tbody.innerHTML = users.length ? users.map((u, idx) => `
     <tr>
+      <td>${escapeHtml(u.nome || '-')}</td>
       <td>${escapeHtml(u.email || u.username || '-')}</td>
       <td>${escapeHtml(u.role || 'user')}</td>
       <td>${escapeHtml(modeLabel(u.pcMode))}</td>
@@ -4860,7 +4863,7 @@ async function renderManagedUsers(){
         </div>
       </td>
     </tr>
-  `).join('') : '<tr><td colspan="5">Sem utilizadores.</td></tr>';
+  `).join('') : '<tr><td colspan="6">Sem utilizadores.</td></tr>';
 }
 
 window.editManagedUser = function(index){
@@ -4869,6 +4872,7 @@ window.editManagedUser = function(index){
   const u = users[index];
   if(!u) return;
   $('managedUserIndex').value = String(index);
+  if($('managedDisplayName')) $('managedDisplayName').value = u.nome || u.displayName || '';
   $('managedUsername').value = u.email || u.username || '';
   $('managedRole').value = u.role || 'user';
   if($('managedPcMode')) $('managedPcMode').value = normalizeAccessMode(u.pcMode);
@@ -7198,6 +7202,7 @@ $('userManagerForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   if(!isMasterAdmin()) return;
 
+  const nome = String($('managedDisplayName')?.value || '').trim();
   const email = normalizeRoleEmail($('managedUsername').value);
   const role = normalizeRoleValue($('managedRole').value);
   const pcMode = normalizeAccessMode($('managedPcMode')?.value);
@@ -7211,6 +7216,8 @@ $('userManagerForm')?.addEventListener('submit', async (e) => {
   try{
     await ensureFirebaseCore();
     await setDoc(doc(firestoreDb, ROLE_COLLECTION, email), {
+      nome,
+      displayName: nome,
       email,
       role,
       pcMode,
@@ -7219,6 +7226,7 @@ $('userManagerForm')?.addEventListener('submit', async (e) => {
     }, { merge:true });
     await loadManagedUsersFromFirestore();
     $('userManagerForm').reset();
+    if($('managedDisplayName')) $('managedDisplayName').value = '';
     $('managedUserIndex').value = '';
     $('managedRole').value = 'user';
     if($('managedPcMode')) $('managedPcMode').value = 'edit';
@@ -7240,6 +7248,7 @@ $('userManagerForm')?.addEventListener('submit', async (e) => {
 
 $('clearManagedUserBtn')?.addEventListener('click', ()=>{
   $('userManagerForm')?.reset();
+  if($('managedDisplayName')) $('managedDisplayName').value = '';
   $('managedUserIndex').value = '';
   $('managedRole').value = 'user';
   if($('managedPcMode')) $('managedPcMode').value = 'edit';
