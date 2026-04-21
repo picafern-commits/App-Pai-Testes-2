@@ -3004,11 +3004,26 @@ function getBackupTodayIso(){
   return `${y}-${m}-${d}`;
 }
 
+function readBackupArrayFromStorage(primaryKey, legacyKey){
+  try{
+    const raw = localStorage.getItem(primaryKey) || localStorage.getItem(legacyKey) || '[]';
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  }catch(e){
+    return [];
+  }
+}
+
 function getAppDataSnapshot(){
-  const trabalhosLista = window.trabalhos || (typeof trabalhos !== 'undefined' ? trabalhos : JSON.parse(localStorage.getItem('trabalhos') || '[]'));
-  const clientesLista = window.clientes || (typeof clientes !== 'undefined' ? clientes : JSON.parse(localStorage.getItem('clientes') || '[]'));
-  const pagamentosLista = window.pagamentos || (typeof pagamentos !== 'undefined' ? pagamentos : JSON.parse(localStorage.getItem('pagamentos') || '[]'));
+  const keys = (typeof STORAGE_KEYS === 'object' && STORAGE_KEYS) ? STORAGE_KEYS : { trabalhos:'ge_trabalhos', clientes:'ge_clientes', pagamentos:'ge_pagamentos', lastTrabId:'ge_last_trab_id' };
+  const trabalhosLista = Array.isArray(window.trabalhos) ? window.trabalhos : (typeof trabalhos !== 'undefined' && Array.isArray(trabalhos) ? trabalhos : readBackupArrayFromStorage(keys.trabalhos, 'trabalhos'));
+  const clientesLista = Array.isArray(window.clientes) ? window.clientes : (typeof clientes !== 'undefined' && Array.isArray(clientes) ? clientes : readBackupArrayFromStorage(keys.clientes, 'clientes'));
+  const pagamentosLista = Array.isArray(window.pagamentos) ? window.pagamentos : (typeof pagamentos !== 'undefined' && Array.isArray(pagamentos) ? pagamentos : readBackupArrayFromStorage(keys.pagamentos, 'pagamentos'));
   return {
+    exportadoEm: new Date().toISOString(),
+    appVersion: '1.0.6',
+    currentUsername: (typeof currentUser !== 'undefined' && currentUser) || localStorage.getItem('currentUser') || '',
+    currentRole: (typeof currentRole !== 'undefined' && currentRole) || localStorage.getItem('currentRole') || '',
     trabalhos: Array.isArray(trabalhosLista) ? trabalhosLista : [],
     clientes: Array.isArray(clientesLista) ? clientesLista : [],
     pagamentos: Array.isArray(pagamentosLista) ? pagamentosLista : [],
@@ -3095,14 +3110,44 @@ async function syncBackupCollectionToFirebase(collectionName, items){
   return { upserts, deletes };
 }
 
-async function importBackupDataObject(data){
+function extractImportBackupPayload(data){
   if(!data || typeof data !== 'object'){
-    alert('Backup inválido.');
-    return;
+    throw new Error('Backup inválido.');
   }
-  const novosTrabalhos = (Array.isArray(data.trabalhos) ? data.trabalhos : []).map(item => typeof normalizeTrabalhoStateShape === 'function' ? normalizeTrabalhoStateShape(item) : item);
-  const novosClientes = Array.isArray(data.clientes) ? data.clientes : [];
-  const novosPagamentos = Array.isArray(data.pagamentos) ? data.pagamentos : [];
+
+  const source = (data && typeof data === 'object' && data.backup && typeof data.backup === 'object') ? data.backup : data;
+  const trabalhosRaw = Array.isArray(source.trabalhos) ? source.trabalhos : [];
+  const clientesRaw = Array.isArray(source.clientes) ? source.clientes : [];
+  const pagamentosRaw = Array.isArray(source.pagamentos) ? source.pagamentos : [];
+
+  if(!trabalhosRaw.length && !clientesRaw.length && !pagamentosRaw.length){
+    throw new Error('O ficheiro JSON não contém listas de trabalhos, clientes ou pagamentos.');
+  }
+
+  return {
+    trabalhos: trabalhosRaw,
+    clientes: clientesRaw,
+    pagamentos: pagamentosRaw
+  };
+}
+
+async function importBackupDataObject(data){
+  const payload = extractImportBackupPayload(data);
+  const novosTrabalhos = payload.trabalhos
+    .filter(item => item && typeof item === 'object')
+    .map(item => {
+      const normalized = { ...item };
+      if(!normalized.id){
+        normalized.id = normalized.workCode || normalized.ordemId || `trab_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+      }
+      return typeof normalizeTrabalhoStateShape === 'function' ? normalizeTrabalhoStateShape(normalized) : normalized;
+    });
+  const novosClientes = payload.clientes
+    .filter(item => item && typeof item === 'object')
+    .map(item => ({ ...item, id: item.id || `cli_${Date.now()}_${Math.random().toString(36).slice(2,8)}` }));
+  const novosPagamentos = payload.pagamentos
+    .filter(item => item && typeof item === 'object')
+    .map(item => ({ ...item, id: item.id || `pay_${Date.now()}_${Math.random().toString(36).slice(2,8)}` }));
 
   const keys = (typeof STORAGE_KEYS === 'object' && STORAGE_KEYS) ? STORAGE_KEYS : { trabalhos:'ge_trabalhos', clientes:'ge_clientes', pagamentos:'ge_pagamentos', lastTrabId:'ge_last_trab_id' };
 
@@ -3131,11 +3176,10 @@ async function importBackupDataObject(data){
       syncBackupCollectionToFirebase('clientes', novosClientes),
       syncBackupCollectionToFirebase('pagamentos', novosPagamentos)
     ]);
-    remoteSummary = `
-Firebase: ${trabSync.upserts} trabalhos, ${cliSync.upserts} clientes e ${pagSync.upserts} pagamentos sincronizados.`;
+    remoteSummary = ` Firebase: ${trabSync.upserts} trabalhos, ${cliSync.upserts} clientes e ${pagSync.upserts} pagamentos sincronizados.`;
   }catch(err){
     console.error('Erro ao sincronizar backup para Firebase:', err);
-    alert('Backup importado localmente, mas houve erro a sincronizar com a Firebase.');
+    throw new Error(`Backup lido, mas não foi possível sincronizar com a Firebase: ${err?.message || err}`);
   }
 
   try { if(typeof renderTrabalhos === 'function') renderTrabalhos(); } catch(e){}
@@ -3145,8 +3189,12 @@ Firebase: ${trabSync.upserts} trabalhos, ${cliSync.upserts} clientes e ${pagSync
   try { if(typeof renderRelatorios === 'function') { renderRelatorios(); try{ renderAdvancedReports(); }catch(e){} } } catch(e){}
   try { if(typeof refreshVisibleViews === 'function') refreshVisibleViews(); } catch(e){}
   try { if(typeof loadAllData === 'function') loadAllData(); } catch(e){}
+  setTimeout(() => {
+    try { if(typeof refreshVisibleViews === 'function') refreshVisibleViews(); } catch(e){}
+    try { if(typeof renderPagamentos === 'function') renderPagamentos(); } catch(e){}
+  }, 350);
 
-  alert(`Backup importado com sucesso.${remoteSummary}`);
+  alert(`Backup importado com sucesso. ${novosTrabalhos.length} trabalhos, ${novosClientes.length} clientes e ${novosPagamentos.length} pagamentos carregados.${remoteSummary}`);
 }
 
 function importBackupFile(event){
@@ -3155,14 +3203,21 @@ function importBackupFile(event){
   const reader = new FileReader();
   reader.onload = async function(e){
     try{
-      const data = JSON.parse(e.target.result);
+      const rawText = String(e?.target?.result || '');
+      const data = JSON.parse(rawText);
       await importBackupDataObject(data);
-      if(event.target) event.target.value = '';
     }catch(err){
-      alert('Não foi possível ler o backup.');
+      console.error('Erro ao importar backup:', err);
+      alert(`Não foi possível importar o backup. ${err?.message || ''}`.trim());
+    }finally{
+      if(event.target) event.target.value = '';
     }
   };
-  reader.readAsText(file);
+  reader.onerror = function(){
+    if(event.target) event.target.value = '';
+    alert('Não foi possível ler o ficheiro de backup.');
+  };
+  reader.readAsText(file, 'utf-8');
 }
 
 function runWeeklyAutomaticBackupSilently(){
