@@ -477,6 +477,8 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .role-view-user .admin-only{display:none!important}
 .role-view-user .master-only{display:none!important}
 .role-view-admin .master-only{display:none!important}
+.role-device-view .device-edit-only{display:none!important}
+.role-device-view-banner{position:fixed;right:18px;bottom:18px;z-index:1200;padding:10px 14px;border-radius:999px;background:rgba(245,158,11,.16);border:1px solid rgba(245,158,11,.35);color:#fcd34d;font-weight:700;backdrop-filter:blur(8px)}
 .bottom-nav{display:none}
 .modal{
   position:fixed; inset:0; background:rgba(0,0,0,.55); display:grid; place-items:center; z-index:100; padding:20px;
@@ -4289,6 +4291,8 @@ const APP_VERSION = '1.0.6';
 const STORAGE_KEYS = { trabalhos:'ge_trabalhos', clientes:'ge_clientes', pagamentos:'ge_pagamentos' , lastTrabId:'ge_last_trab_id' };
 
 let currentRole = null, currentUsername = null, currentUserEmail = null;
+let currentDeviceType = 'computador';
+let currentAccessMode = 'edit';
 let managedUsersCache = [];
 const ROLE_COLLECTION = 'user_roles';
 const MASTER_EMAILS = ['pica.fern@gmail.com'];
@@ -4329,6 +4333,16 @@ function normalizeAccessMode(mode){
   const value = String(mode || 'edit').toLowerCase();
   return ['edit','view'].includes(value) ? value : 'edit';
 }
+function detectCurrentDeviceType(){
+  try{
+    const ua = String(navigator.userAgent || '').toLowerCase();
+    const mobileUa = /android|iphone|ipad|mobile|tablet/.test(ua);
+    const narrow = (window.innerWidth || 0) <= 900;
+    return (mobileUa || narrow) ? 'mobile' : 'computador';
+  }catch(e){
+    return 'computador';
+  }
+}
 function normalizeRoleEmail(email){
   return String(email || '').trim().toLowerCase();
 }
@@ -4364,6 +4378,31 @@ async function fetchRoleForUser(user){
   }
   await ensureRoleSeed(email, 'user');
   return 'user';
+}
+async function fetchRoleProfileForUser(user){
+  const email = normalizeRoleEmail(user?.email);
+  const baseProfile = { role:'user', pcMode:'edit', mobileMode:'edit' };
+  if(!email) return baseProfile;
+  if(isMasterEmail(email)){
+    await ensureRoleSeed(email, 'master_admin');
+    return { role:'master_admin', pcMode:'edit', mobileMode:'edit' };
+  }
+  if(!firestoreDb) return baseProfile;
+  try{
+    const snap = await getDoc(doc(firestoreDb, ROLE_COLLECTION, email));
+    if(snap.exists()){
+      const data = snap.data() || {};
+      return {
+        role: normalizeRoleValue(data.role),
+        pcMode: normalizeAccessMode(data.pcMode),
+        mobileMode: normalizeAccessMode(data.mobileMode)
+      };
+    }
+  }catch(err){
+    console.warn('Não foi possível ler perfil do utilizador:', err);
+  }
+  await ensureRoleSeed(email, 'user');
+  return baseProfile;
 }
 async function ensureFirebaseCore(){
   if (!firebaseApp) firebaseApp = initializeApp(firebaseConfig);
@@ -4535,7 +4574,10 @@ function startPresenceTracking(){
 
 async function applyAuthenticatedSession(user){
   await ensureFirebaseCore();
-  const role = await fetchRoleForUser(user);
+  const profile = await fetchRoleProfileForUser(user);
+  const role = normalizeRoleValue(profile?.role);
+  currentDeviceType = detectCurrentDeviceType();
+  currentAccessMode = normalizeAccessMode(currentDeviceType === 'mobile' ? profile?.mobileMode : profile?.pcMode);
   const username = deriveLoginUsername(user);
   currentUserEmail = normalizeRoleEmail(user?.email);
   if(window.showApp) window.showApp();
@@ -4679,8 +4721,62 @@ const euro = (v) => Number(v || 0).toLocaleString('pt-PT', {style:'currency', cu
 const fmtDate = (v) => { if(!v) return '-'; const d = new Date(v); return isNaN(d) ? '-' : d.toLocaleDateString('pt-PT'); };
 const escapeHtml = (s='') => String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const isMasterAdmin = () => currentRole === 'master_admin';
-const isAdminLike = () => currentRole === 'admin' || currentRole === 'master_admin';
+const isDeviceViewMode = () => !isMasterAdmin() && normalizeAccessMode(currentAccessMode) === 'view';
+const isAdminLike = () => !isDeviceViewMode() && (currentRole === 'admin' || currentRole === 'master_admin');
 
+function applyDeviceAccessRestrictions(){
+  const viewMode = isDeviceViewMode();
+  document.body.classList.toggle('role-device-view', viewMode);
+
+  const oldBanner = document.getElementById('deviceViewModeBanner');
+  if(oldBanner) oldBanner.remove();
+  if(viewMode){
+    const banner = document.createElement('div');
+    banner.id = 'deviceViewModeBanner';
+    banner.className = 'role-device-view-banner';
+    banner.textContent = `Modo Só Ver ativo (${currentDeviceType})`;
+    document.body.appendChild(banner);
+  }
+
+  const actionTexts = ['guardar','apagar','editar','importar','adicionar','confirmar','pago','por pagar','guardar cliente','guardar trabalho','guardar role'];
+  document.querySelectorAll('button,label[for="backupImportInputPremium"]').forEach(el => {
+    if(!el || el.closest('#loginScreen')) return;
+    if(isMasterAdmin()) return;
+    const txt = String(el.textContent || '').trim().toLowerCase();
+    const shouldBlock = actionTexts.some(k => txt.includes(k));
+    if(!shouldBlock) return;
+    if(viewMode){
+      el.style.pointerEvents = 'none';
+      el.style.opacity = '0.45';
+      el.setAttribute('aria-disabled','true');
+      if(el.tagName === 'BUTTON') el.disabled = true;
+    }else{
+      el.style.pointerEvents = '';
+      el.style.opacity = '';
+      el.removeAttribute('aria-disabled');
+      if(el.tagName === 'BUTTON') el.disabled = false;
+    }
+  });
+
+  ['trabalhoForm','clienteForm','userManagerForm'].forEach(formId => {
+    const form = $(formId);
+    if(!form || isMasterAdmin()) return;
+    form.querySelectorAll('input,select,textarea,button').forEach(el => {
+      if(el.closest('#loginScreen')) return;
+      const allowClear = (el.id === 'clearTrabalhoBtn' || el.id === 'clearClienteBtn' || el.id === 'clearManagedUserBtn');
+      if(!viewMode){
+        if(el.dataset.viewDisabled === '1'){ el.disabled = false; }
+        return;
+      }
+      if(allowClear) return;
+      el.disabled = true;
+      el.dataset.viewDisabled = '1';
+    });
+  });
+
+  const backupImport = $('backupImportInputPremium');
+  if(backupImport && !isMasterAdmin()) backupImport.disabled = viewMode;
+}
 
 function updateTrabalhoAdvancedFields(){
   const isEditing = !!($('trabalhoId') && $('trabalhoId').value);
@@ -5161,17 +5257,18 @@ function setSyncMessage(msg, level='warn'){
 function setRoleUI(){
   if(!currentRole) return;
   const roleLabel = currentRole === 'master_admin' ? 'Admin Mestre' : (currentRole === 'admin' ? 'Admin' : 'User');
+  const accessLabel = isDeviceViewMode() ? 'Só ver' : 'Pode mexer';
   document.body.classList.toggle('role-view-user', currentRole === 'user');
   document.body.classList.toggle('role-view-admin', currentRole === 'admin');
   $('roleBadge').textContent = roleLabel;
-  $('roleLine').textContent = `Role: ${roleLabel}`;
+  $('roleLine').textContent = `Role: ${roleLabel} • ${currentDeviceType}: ${accessLabel}`;
   $('versionBadge').textContent = APP_VERSION;
   $('currentUserName').textContent = currentUsername || 'Utilizador';
   const usersSection = $('usersSection');
   if(usersSection) usersSection.style.display = isMasterAdmin() ? 'block' : 'none';
   const workCodeField = $('workCodeDisplay');
   if(workCodeField){
-    workCodeField.readOnly = !isMasterAdmin();
+    workCodeField.readOnly = !isMasterAdmin() || isDeviceViewMode();
     if(!workCodeField.value){
       workCodeField.value = nextTrabalhoIdPreview();
     }
@@ -5179,6 +5276,7 @@ function setRoleUI(){
   setSyncMessage(syncReady ? 'Firebase Sync' : syncMessage, syncReady ? 'ok' : 'warn');
   try{ updateTrabalhoFieldVisibility(); }catch(e){}
   updateTrabalhoAdvancedFields();
+  applyDeviceAccessRestrictions();
 }
 function switchTab(tab){
   try{ sessionStorage.setItem('gestao:lastTab', tab); }catch(e){}
@@ -6979,7 +7077,8 @@ function renderAll(){ if(!currentRole) return; setRoleUI(); populateClientOption
   renderManagedUsers();
   updateWorkCodePreview();
   updateWorkCodePreview();
-  renderMobileCards(); }
+  renderMobileCards();
+  applyDeviceAccessRestrictions(); }
 
 $('searchTrabalhos')?.addEventListener('input', ()=>{ renderTrabalhos(); renderMobileCards(); });
 $('filterEstado')?.addEventListener('change', ()=>{ renderTrabalhos(); renderMobileCards(); });
