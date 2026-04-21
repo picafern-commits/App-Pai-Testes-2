@@ -4068,11 +4068,11 @@ async function fetchRoleProfileForUser(user){
   const email = normalizeRoleEmail(user?.email);
   const baseProfile = { role:'user', pcMode:'edit', mobileMode:'edit', nome:'', displayName:'' };
   if(!email) return baseProfile;
-  if(isMasterEmail(email)){
-    await ensureRoleSeed(email, 'master_admin');
-    return { role:'master_admin', pcMode:'edit', mobileMode:'edit', nome:'', displayName:'' };
+  const forcedRole = isMasterEmail(email) ? 'master_admin' : 'user';
+  await ensureRoleSeed(email, forcedRole);
+  if(!firestoreDb){
+    return { ...baseProfile, role: forcedRole };
   }
-  if(!firestoreDb) return baseProfile;
   try{
     const snap = await getDoc(doc(firestoreDb, ROLE_COLLECTION, email));
     if(snap.exists()){
@@ -4080,7 +4080,7 @@ async function fetchRoleProfileForUser(user){
       return {
         nome: String(data.nome || data.displayName || '').trim(),
         displayName: String(data.displayName || data.nome || '').trim(),
-        role: normalizeRoleValue(data.role),
+        role: isMasterEmail(email) ? 'master_admin' : normalizeRoleValue(data.role),
         pcMode: normalizeAccessMode(data.pcMode),
         mobileMode: normalizeAccessMode(data.mobileMode)
       };
@@ -4088,8 +4088,7 @@ async function fetchRoleProfileForUser(user){
   }catch(err){
     console.warn('Não foi possível ler perfil do utilizador:', err);
   }
-  await ensureRoleSeed(email, 'user');
-  return baseProfile;
+  return { ...baseProfile, role: forcedRole };
 }
 async function ensureFirebaseCore(){
   if (!firebaseApp) firebaseApp = initializeApp(firebaseConfig);
@@ -4778,6 +4777,8 @@ function normalizeManagedUsers(users){
     const email = normalizeRoleEmail(u.email || u.username);
     if(!email) return;
     map.set(email, {
+      nome: String(u.nome || u.displayName || '').trim(),
+      displayName: String(u.displayName || u.nome || '').trim(),
       email,
       username: email,
       role: normalizeRoleValue(u.role),
@@ -4788,6 +4789,8 @@ function normalizeManagedUsers(users){
   MASTER_EMAILS.forEach(email => {
     const prev = map.get(email) || {};
     map.set(email, {
+      nome: String(prev.nome || prev.displayName || '').trim(),
+      displayName: String(prev.displayName || prev.nome || '').trim(),
       email,
       username: email,
       role: 'master_admin',
@@ -7239,7 +7242,10 @@ $('userManagerForm')?.addEventListener('submit', async (e) => {
     renderMobileCards();
     if(currentUserEmail && currentUserEmail === email){
       currentRole = role;
+      currentUsername = String(nome || email.split('@')[0] || currentUsername || 'Utilizador').trim();
       setRoleUI();
+      try{ updatePresenceState(true); }catch(e) {}
+      try{ renderOnlineUsersCard(); }catch(e) {}
       renderAll();
     }
   }catch(err){
