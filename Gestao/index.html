@@ -4102,6 +4102,16 @@ navButtons.forEach(b => b.addEventListener('click', ()=>switchTab(b.dataset.tab)
 bottomButtons.forEach(b => b.addEventListener('click', ()=>switchTab(b.dataset.tab)));
 document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', ()=>switchTab(b.dataset.go)));
 
+
+function refreshVisibleViews(){
+  try{ renderAll(); }catch(e){}
+  try{
+    const activePage = document.querySelector('.page.active');
+    const activeTab = activePage ? activePage.id.replace(/-page$/, '') : (sessionStorage.getItem('gestao:lastTab') || 'dashboard');
+    switchTab(activeTab);
+  }catch(e){}
+}
+
 function forceAppRefresh(){
   try{
     const activePage = document.querySelector('.page.active');
@@ -4159,7 +4169,7 @@ async function initFirebaseSync(){
           clearRealtimeListeners();
           attachRealtimeListeners();
         }
-        if (currentRole) renderAll();
+        if (currentRole) refreshVisibleViews();
       });
 
       await waitForFirebaseSyncReady();
@@ -4192,7 +4202,7 @@ function attachRealtimeListeners(){
       setter(rows);
       saveLocal();
       setSyncMessage('Firebase Sync', 'ok');
-      if (currentRole) renderAll();
+      if (currentRole) refreshVisibleViews();
     }, err => {
       console.error(`Snapshot ${name} failed:`, err);
       setSyncMessage('Erro de sync, uso local', 'bad');
@@ -5757,7 +5767,7 @@ window.deleteTrabalho = async function(id){
     await removeRemote('trabalhos', id);
     trabalhos = trabalhos.filter(x=>x.id!==id);
     saveLocal();
-    renderAll();
+    refreshVisibleViews();
   }catch(err){
     console.error(err);
     setSyncMessage('Erro a apagar no Firebase', 'bad');
@@ -5777,7 +5787,7 @@ window.deleteCliente = async function(id){
     await removeRemote('clientes', id);
     clientes = clientes.filter(x=>x.id!==id);
     saveLocal();
-    renderAll();
+    refreshVisibleViews();
   }catch(err){
     console.error(err);
     setSyncMessage('Erro a apagar no Firebase', 'bad');
@@ -5942,8 +5952,8 @@ window.markAsPaid = async function(id, metodo='Manual', dataPagamento='', valorP
       pagamentos.push(pagamento);
     }
     saveLocal();
-    renderAll();
-    setTimeout(()=>{ try{ renderAll(); }catch(e){} }, 200);
+    refreshVisibleViews();
+    setTimeout(()=>{ try{ refreshVisibleViews(); }catch(e){} }, 200);
     return true;
   } catch(err){
     console.error(err);
@@ -5960,7 +5970,7 @@ window.deletePagamento = async function(id){
     await removeRemote('pagamentos', id);
     pagamentos = pagamentos.filter(x => x.id !== id);
     saveLocal();
-    renderAll();
+    refreshVisibleViews();
   }catch(err){
     console.error(err);
     setSyncMessage('Erro a apagar no Firebase', 'bad');
@@ -6087,8 +6097,8 @@ $('paymentConfirmBtn')?.addEventListener('click', async ()=>{
   const ok = await window.markAsPaid(currentPaymentId, currentPaymentMethod, currentPaymentDate, currentPaymentValue);
   paymentConfirmInFlight = false;
   if(ok){
-    renderAll();
-    setTimeout(()=>{ try { renderAll(); } catch(e) {} }, 200);
+    refreshVisibleViews();
+    setTimeout(()=>{ try { refreshVisibleViews(); } catch(e) {} }, 200);
   } else {
     alert('Não foi possível guardar o pagamento na Firebase.');
   }
