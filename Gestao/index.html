@@ -3067,13 +3067,15 @@ function recalcLastTrabIdFromList(trabalhosLista){
 
 async function waitForFirebaseUser(timeoutMs = 15000){
   try{
-    if(typeof firebaseAuth === 'undefined' || !firebaseAuth) return null;
-    if(firebaseAuth.currentUser) return firebaseAuth.currentUser;
-    if(typeof firebaseAuth.authStateReady === 'function'){
-      try{ await Promise.race([firebaseAuth.authStateReady(), new Promise(resolve => setTimeout(resolve, timeoutMs))]); }catch(e){}
-      if(firebaseAuth.currentUser) return firebaseAuth.currentUser;
+    const authObj = window.firebaseAuth || null;
+    if(!authObj) return null;
+    if(authObj.currentUser) return authObj.currentUser;
+    if(typeof authObj.authStateReady === 'function'){
+      try{ await Promise.race([authObj.authStateReady(), new Promise(resolve => setTimeout(resolve, timeoutMs))]); }catch(e){}
+      if(authObj.currentUser) return authObj.currentUser;
     }
-    if(typeof onAuthStateChanged !== 'function') return firebaseAuth.currentUser || null;
+    const onAuthStateChangedFn = window.onAuthStateChanged;
+    if(typeof onAuthStateChangedFn !== 'function') return authObj.currentUser || null;
     return await new Promise(resolve => {
       let done = false;
       let unsub = null;
@@ -3081,43 +3083,45 @@ async function waitForFirebaseUser(timeoutMs = 15000){
         if(done) return;
         done = true;
         try{ if(typeof unsub === 'function') unsub(); }catch(e){}
-        resolve(user || firebaseAuth.currentUser || null);
+        resolve(user || authObj.currentUser || null);
       };
-      const timer = setTimeout(() => finish(firebaseAuth.currentUser || null), timeoutMs);
+      const timer = setTimeout(() => finish(authObj.currentUser || null), timeoutMs);
       try{
-        unsub = onAuthStateChanged(firebaseAuth, user => {
+        unsub = onAuthStateChangedFn(authObj, user => {
           clearTimeout(timer);
-          finish(user || firebaseAuth.currentUser || null);
+          finish(user || authObj.currentUser || null);
         }, () => {
           clearTimeout(timer);
-          finish(firebaseAuth.currentUser || null);
+          finish(authObj.currentUser || null);
         });
       }catch(err){
         clearTimeout(timer);
-        finish(firebaseAuth.currentUser || null);
+        finish(authObj.currentUser || null);
       }
     });
   }catch(err){
     console.warn('Não foi possível esperar pelo utilizador Firebase:', err);
-    return (typeof firebaseAuth !== 'undefined' && firebaseAuth) ? (firebaseAuth.currentUser || null) : null;
+    return (window.firebaseAuth) ? (window.firebaseAuth.currentUser || null) : null;
   }
 }
 
 async function syncBackupCollectionToFirebase(collectionName, items){
   if(!Array.isArray(items)) return { upserts:0, deletes:0, failures:0, skipped:false, reason:'' };
-  if(typeof ensureFirebaseCore !== 'function' || typeof getDocs !== 'function' || typeof collection !== 'function' || typeof writeBatch !== 'function'){
+  const ensureReady = window.ensureFirebaseReady;
+  const getDocsFn = window.getDocs;
+  const collectionFn = window.collection;
+  const writeBatchFn = window.writeBatch;
+  const docFn = window.doc;
+  const dbObj = window.firestoreDb;
+  if(typeof ensureReady !== 'function' || typeof getDocsFn !== 'function' || typeof collectionFn !== 'function' || typeof writeBatchFn !== 'function' || typeof docFn !== 'function' || !dbObj){
     return { upserts:0, deletes:0, failures:0, skipped:true, reason:'firebase-api-indisponivel' };
   }
 
-  try{
-    await ensureFirebaseCore();
-  }catch(err){
-    console.warn('Firebase core ainda não ficou pronto para importar em', collectionName, err);
-    return { upserts:0, deletes:0, failures:0, skipped:true, reason:err?.code || err?.message || 'firebase-api-indisponivel' };
-  }
-
-  if(!firestoreDb){
-    return { upserts:0, deletes:0, failures:0, skipped:true, reason:'firestore-indisponivel' };
+  await ensureReady();
+  const firebaseUser = await waitForFirebaseUser(15000);
+  if(!firebaseUser){
+    console.warn('Import sem sessão Firebase pronta em', collectionName);
+    return { upserts:0, deletes:0, failures:0, skipped:true, reason:'sem-sessao' };
   }
 
   const normalized = [];
@@ -3132,7 +3136,7 @@ async function syncBackupCollectionToFirebase(collectionName, items){
 
   let remoteIds = new Set();
   try{
-    const snap = await getDocs(collection(firestoreDb, collectionName));
+    const snap = await getDocsFn(collectionFn(dbObj, collectionName));
     remoteIds = new Set((snap.docs || []).map(docSnap => String(docSnap.id)));
   }catch(err){
     console.error('Falha ao ler coleção remota antes do import:', collectionName, err);
@@ -3148,9 +3152,9 @@ async function syncBackupCollectionToFirebase(collectionName, items){
   const chunkSize = 350;
   for(let i = 0; i < normalized.length; i += chunkSize){
     const chunk = normalized.slice(i, i + chunkSize);
-    const batch = writeBatch(firestoreDb);
+    const batch = writeBatchFn(dbObj);
     for(const item of chunk){
-      batch.set(doc(firestoreDb, collectionName, item.id), item, { merge:true });
+      batch.set(docFn(dbObj, collectionName, item.id), item, { merge:true });
     }
     try{
       await batch.commit();
@@ -3165,9 +3169,9 @@ async function syncBackupCollectionToFirebase(collectionName, items){
   const idsToDelete = Array.from(remoteIds).filter(id => !nextIds.has(id));
   for(let i = 0; i < idsToDelete.length; i += chunkSize){
     const chunk = idsToDelete.slice(i, i + chunkSize);
-    const batch = writeBatch(firestoreDb);
+    const batch = writeBatchFn(dbObj);
     for(const id of chunk){
-      batch.delete(doc(firestoreDb, collectionName, id));
+      batch.delete(docFn(dbObj, collectionName, id));
     }
     try{
       await batch.commit();
@@ -3248,7 +3252,7 @@ async function importBackupDataObject(data){
     const skipped = [trabSync, cliSync, pagSync].every(r => r && r.skipped);
     const reasons = [trabSync?.reason, cliSync?.reason, pagSync?.reason].filter(Boolean).join(', ');
     if(skipped){
-      remoteSummary = ` Firebase: sincronização adiada (${reasons || 'firestore-indisponivel'}). A app importou localmente, mas a ligação Firebase ainda não respondeu a tempo.`;
+      remoteSummary = ` Firebase: sincronização adiada (${reasons || 'sem-sessao'}). Faz login completo e tenta importar novamente.`;
     }else{
       remoteSummary = ` Firebase: ${trabSync.upserts} trabalhos, ${cliSync.upserts} clientes e ${pagSync.upserts} pagamentos sincronizados.${totalFailures ? ` Falhas: ${totalFailures}.` : ''}${reasons ? ` Motivo: ${reasons}.` : ''}`;
       syncOk = totalFailures === 0;
@@ -3932,6 +3936,7 @@ const ONLINE_WIDGET_KEY = 'ge_online_widget_hidden';
 
 let authBootstrapped = false;
 let authListenerAttached = false;
+if(typeof window !== 'undefined'){ window.firebaseApp = firebaseApp; window.firebaseAuth = firebaseAuth; window.firestoreDb = firestoreDb; }
 
 function deriveLoginUsername(user){
   const email = String(user?.email || '').trim();
@@ -3983,6 +3988,18 @@ async function ensureFirebaseCore(){
   if (!firebaseAuth) firebaseAuth = getAuth(firebaseApp);
   if (!firestoreDb) firestoreDb = getFirestore(firebaseApp);
   try{ await setPersistence(firebaseAuth, browserLocalPersistence); }catch(e){}
+  if(typeof window !== 'undefined'){
+    window.firebaseApp = firebaseApp;
+    window.firebaseAuth = firebaseAuth;
+    window.firestoreDb = firestoreDb;
+    window.onAuthStateChanged = onAuthStateChanged;
+    window.getDocs = getDocs;
+    window.collection = collection;
+    window.writeBatch = writeBatch;
+    window.doc = doc;
+    window.setDoc = setDoc;
+    window.deleteDoc = deleteDoc;
+  }
   return true;
 }
 
@@ -4815,18 +4832,27 @@ async function initFirebaseSync(){
   if(firebaseSyncInitPromise) return firebaseSyncInitPromise;
   firebaseSyncInitPromise = (async()=>{
     try{
-      await ensureFirebaseCore();
+      if (!firebaseApp) firebaseApp = initializeApp(firebaseConfig);
+      if (!firebaseAuth) firebaseAuth = getAuth(firebaseApp);
+      if (!firestoreDb) firestoreDb = getFirestore(firebaseApp);
 
       syncReady = true;
-      setSyncMessage(firebaseAuth?.currentUser ? 'Firebase Sync' : 'Firebase ligado', firebaseAuth?.currentUser ? 'ok' : 'warn');
+      setSyncMessage('Firebase Sync', 'ok');
       clearRealtimeListeners();
       attachRealtimeListeners();
 
+      if(!firebaseAuth.currentUser){
+        console.warn('Sem utilizador autenticado na Firebase; a app não vai tentar auth anónima.');
+        setSyncMessage('Firebase Sync (à espera de login)', 'warn');
+      }
+
       onAuthStateChanged(firebaseAuth, user => {
-        syncReady = true;
-        setSyncMessage(user ? 'Firebase Sync' : 'Firebase ligado', user ? 'ok' : 'warn');
-        clearRealtimeListeners();
-        attachRealtimeListeners();
+        if (user) {
+          syncReady = true;
+          setSyncMessage('Firebase Sync', 'ok');
+          clearRealtimeListeners();
+          attachRealtimeListeners();
+        }
         if (currentRole) refreshVisibleViews();
       });
 
@@ -4838,7 +4864,9 @@ async function initFirebaseSync(){
       firebaseSyncInitPromise = null;
       const msg = location.protocol === 'file:'
         ? 'Abre por servidor/GitHub Pages (não file://)'
-        : 'Local (Firebase indisponível)';
+        : err?.code === 'auth/operation-not-allowed'
+          ? 'Ativa Anonymous Auth no Firebase'
+          : 'Local (Firebase indisponível)';
       setSyncMessage(msg, 'bad');
       throw err;
     }
@@ -4874,6 +4902,11 @@ async function ensureFirebaseReady(timeoutMs = 12000){
   if (!firestoreDb) {
     await initFirebaseSync();
     await waitForFirebaseSyncReady(timeoutMs);
+  }
+  if(typeof window !== 'undefined'){
+    window.ensureFirebaseReady = ensureFirebaseReady;
+    window.firestoreDb = firestoreDb;
+    window.firebaseAuth = firebaseAuth;
   }
   return true;
 }
