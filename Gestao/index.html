@@ -7716,3 +7716,47 @@ function printProfessionalReport(){
 
 </body>
 </html>
+
+<script>
+
+// ================= BACKUP DIARIO =================
+async function executarBackupDiario() {
+  try {
+    const hoje = new Date().toISOString().split("T")[0];
+    const ultimo = localStorage.getItem("ultimo_backup_dia");
+
+    if (ultimo === hoje) return;
+
+    const trabalhos = JSON.parse(localStorage.getItem("ge_trabalhos") || "[]");
+    const clientes = JSON.parse(localStorage.getItem("ge_clientes") || "[]");
+    const pagamentos = JSON.parse(localStorage.getItem("ge_pagamentos") || "[]");
+
+    const backup = { data: new Date().toISOString(), trabalhos, clientes, pagamentos };
+
+    let lista = JSON.parse(localStorage.getItem("backups_diarios") || "[]");
+    lista.push(backup);
+    if (lista.length > 30) lista.shift();
+
+    localStorage.setItem("backups_diarios", JSON.stringify(lista));
+    localStorage.setItem("ultimo_backup_dia", hoje);
+
+    console.log("BACKUP OK");
+
+    if (window.firestoreDb && window.setDoc) {
+      const id = "backup_" + Date.now();
+      await window.setDoc(window.doc(window.firestoreDb, "daily_backups", id), {
+        data: backup.data,
+        total: trabalhos.length
+      });
+    }
+
+  } catch(e){
+    console.error("Erro backup", e);
+  }
+}
+
+window.addEventListener("load", () => setTimeout(executarBackupDiario,2000));
+window.addEventListener("focus", executarBackupDiario);
+// ================= END BACKUP =================
+
+</script>
