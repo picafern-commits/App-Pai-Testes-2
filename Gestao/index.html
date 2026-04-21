@@ -2582,6 +2582,9 @@ td.acoes-col, .acoes-col{
   .online-users-list{padding:10px;max-height:280px;}
 }
 
+
+.table-sort-btn{background:none;border:none;color:inherit;font:inherit;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:0}
+.table-sort-btn span{opacity:.8}
 </style>
 </head>
 <body>
@@ -2813,7 +2816,14 @@ td.acoes-col, .acoes-col{
             <div class="panel-head"><h3>Registo de pagamentos</h3></div>
             <div id="pagamentosCardsWrap" class="mobile-cards-wrap"></div><div class="table-wrap">
               <table>
-                <thead><tr><th>Cliente</th><th>Nome do Trabalho</th><th>Data do Trabalho</th><th>Valor</th><th>Método</th><th>Faturação</th><th>Ações</th></tr></thead>
+                <thead><tr>
+<th><button type="button" class="table-sort-btn" onclick="setPagamentoSort('cliente')">Cliente <span id="sortIcon-cliente">↕</span></button></th>
+<th><button type="button" class="table-sort-btn" onclick="setPagamentoSort('referencia')">Nome do Trabalho <span id="sortIcon-referencia">↕</span></button></th>
+<th><button type="button" class="table-sort-btn" onclick="setPagamentoSort('data')">Data do Trabalho <span id="sortIcon-data">↕</span></button></th>
+<th><button type="button" class="table-sort-btn" onclick="setPagamentoSort('valor')">Valor <span id="sortIcon-valor">↕</span></button></th>
+<th><button type="button" class="table-sort-btn" onclick="setPagamentoSort('metodo')">Método <span id="sortIcon-metodo">↕</span></button></th>
+<th><button type="button" class="table-sort-btn" onclick="setPagamentoSort('invoiceType')">Faturação <span id="sortIcon-invoiceType">↕</span></button></th>
+<th>Ações</th></tr></thead>
                 <tbody id="pagamentosTableBody"></tbody>
               </table>
             </div>
@@ -6598,11 +6608,53 @@ function renderClientes(){
   });
   $('clientesTableBody').innerHTML = rows.length ? rows.slice().reverse().map(c=>`<tr><td>${escapeHtml(c.nome||'-')}</td><td>${escapeHtml(c.telefone||'-')}</td><td>${escapeHtml(c.email||'-')}</td><td>${escapeHtml(c.nif||'-')}</td><td><div class="row-actions">${clienteActions(c)}</div></td></tr>`).join('') : '<tr><td colspan="5">Sem clientes registados.</td></tr>';
 }
+let pagamentoSortKey = 'data';
+let pagamentoSortDir = 'desc';
+
+function getPagamentoSortValue(p, key) {
+  if (key === 'data') return new Date(p.workDate || p.data || 0).getTime() || 0;
+  if (key === 'valor') return Number(p.valor || 0);
+  return String(p[key] || '').toLowerCase();
+}
+
+function updatePagamentoSortIcons() {
+  ['cliente','referencia','data','valor','metodo','invoiceType'].forEach((key) => {
+    const el = document.getElementById(`sortIcon-${key}`);
+    if (!el) return;
+    el.textContent = pagamentoSortKey === key ? (pagamentoSortDir === 'asc' ? '↑' : '↓') : '↕';
+  });
+}
+
+window.setPagamentoSort = function(key) {
+  if (pagamentoSortKey === key) {
+    pagamentoSortDir = pagamentoSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    pagamentoSortKey = key;
+    pagamentoSortDir = key === 'data' || key === 'valor' ? 'desc' : 'asc';
+  }
+  renderPagamentos();
+};
+
 function renderPagamentos() {
   const tbody = $('pagamentosTableBody');
   if (!tbody) return;
-  tbody.innerHTML = pagamentos.length
-    ? pagamentos.slice().reverse().map((p) => {
+
+  const listaOrdenada = pagamentos.slice().sort((a, b) => {
+    const av = getPagamentoSortValue(a, pagamentoSortKey);
+    const bv = getPagamentoSortValue(b, pagamentoSortKey);
+
+    let cmp = 0;
+    if (typeof av === 'number' && typeof bv === 'number') {
+      cmp = av - bv;
+    } else {
+      cmp = String(av).localeCompare(String(bv), 'pt', { numeric: true, sensitivity: 'base' });
+    }
+
+    return pagamentoSortDir === 'asc' ? cmp : -cmp;
+  });
+
+  tbody.innerHTML = listaOrdenada.length
+    ? listaOrdenada.map((p) => {
       const invoiceType = p.invoiceType || 'Com Fatura';
       const invoiceClass = invoiceType === 'Sem Fatura' ? 'sem' : 'com';
       return `
@@ -6617,6 +6669,8 @@ function renderPagamentos() {
       </tr>`;
     }).join('')
     : '<tr><td colspan="7">Sem pagamentos registados.</td></tr>';
+
+  updatePagamentoSortIcons();
 }
 function renderRelatorios() {
   const map = {};
