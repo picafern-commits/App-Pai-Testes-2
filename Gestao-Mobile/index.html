@@ -2440,6 +2440,24 @@ td.acoes-col, .acoes-col{
   background:linear-gradient(180deg, rgba(168,85,247,.24), rgba(126,34,206,.16));
   border:1px solid rgba(216,180,254,.32);
 }
+.backups-premium-pill.daily{
+  color:#e9d5ff;
+}
+.backups-premium-pill.ok{
+  color:#dcfce7;
+  background:linear-gradient(180deg, rgba(34,197,94,.22), rgba(22,163,74,.16));
+  border-color:rgba(74,222,128,.36);
+}
+.backups-premium-pill.warn{
+  color:#fef3c7;
+  background:linear-gradient(180deg, rgba(245,158,11,.22), rgba(217,119,6,.16));
+  border-color:rgba(251,191,36,.36);
+}
+.backups-premium-pill.error{
+  color:#fee2e2;
+  background:linear-gradient(180deg, rgba(239,68,68,.22), rgba(185,28,28,.16));
+  border-color:rgba(248,113,113,.36);
+}
 .backups-premium-grid{
   display:grid;
   grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
@@ -3343,19 +3361,33 @@ function getAppDataSnapshot(){
   };
 }
 
+
 function refreshBackupStatusUi(){
   const lastEl = document.getElementById('backupLastStatus');
   const countEl = document.getElementById('backupCountStatus');
-  const weeklyBackups = JSON.parse(localStorage.getItem('weeklyAutoBackups') || '[]');
-  const last = localStorage.getItem('weeklyAutoBackupLastDate');
+  const dayEl = document.getElementById('backupTodayStatus');
+  const dailyBackups = JSON.parse(localStorage.getItem('dailyAutoBackups') || localStorage.getItem('weeklyAutoBackups') || '[]');
+  const last = localStorage.getItem('dailyAutoBackupLastDate') || localStorage.getItem('weeklyAutoBackupLastDate') || localStorage.getItem('backupFridayDone') || '';
+  const today = new Date().toISOString().split('T')[0];
+
   if(lastEl){
     lastEl.textContent = (last ? fmtDate(last) : '--');
   }
   if(countEl){
-    countEl.textContent = String(weeklyBackups.length);
+    countEl.textContent = String(dailyBackups.length);
+  }
+  if(dayEl){
+    if(last === today){
+      dayEl.textContent = 'Feito hoje';
+    }else if(last){
+      dayEl.textContent = 'Pendente hoje';
+    }else{
+      dayEl.textContent = 'Sem backup';
+    }
   }
   try{ updateBackupWeekIndicator(); }catch(e){}
 }
+
 
 function exportBackupManual(){
   const data = getAppDataSnapshot();
@@ -3636,36 +3668,40 @@ function importBackupFile(event){
   reader.readAsText(file, 'utf-8');
 }
 
+
 function runWeeklyAutomaticBackupSilently(){
   const now = new Date();
-  const lastDateIso = localStorage.getItem('weeklyAutoBackupLastDate');
-  if(lastDateIso){
-    const diffDays = (now - new Date(lastDateIso)) / (1000 * 60 * 60 * 24);
-    if(diffDays < 7){
-      refreshBackupStatusUi();
-  try{ updateBackupWeekIndicator(); }catch(e){}
-  try{fazerBackupSexta();}catch(e){}
-      return;
-    }
+  const todayIso = now.toISOString().split('T')[0];
+  const lastDateIso = localStorage.getItem('dailyAutoBackupLastDate') || localStorage.getItem('weeklyAutoBackupLastDate') || localStorage.getItem('backupFridayDone');
+
+  if(lastDateIso && String(lastDateIso).slice(0,10) === todayIso){
+    refreshBackupStatusUi();
+    try{ updateBackupWeekIndicator(); }catch(e){}
+    return;
   }
 
   const snapshot = getAppDataSnapshot();
-  const backups = JSON.parse(localStorage.getItem('weeklyAutoBackups') || '[]');
+  const backups = JSON.parse(localStorage.getItem('dailyAutoBackups') || localStorage.getItem('weeklyAutoBackups') || '[]');
   backups.push(snapshot);
-  while(backups.length > 12){
+  while(backups.length > 30){
     backups.shift();
   }
+  localStorage.setItem('dailyAutoBackups', JSON.stringify(backups));
+  localStorage.setItem('dailyAutoBackupLastDate', snapshot.dataBackup || new Date().toISOString());
   localStorage.setItem('weeklyAutoBackups', JSON.stringify(backups));
-  localStorage.setItem('weeklyAutoBackupLastDate', snapshot.dataBackup);
+  localStorage.setItem('weeklyAutoBackupLastDate', snapshot.dataBackup || new Date().toISOString());
+  localStorage.setItem('backupFridayDone', todayIso);
+  localStorage.setItem('backupFridayHistory', JSON.stringify(backups));
   refreshBackupStatusUi();
   try{ updateBackupWeekIndicator(); }catch(e){}
-  try{fazerBackupSexta();}catch(e){}
 }
 
+
+
 function downloadLatestWeeklyBackup(){
-  const backups = JSON.parse(localStorage.getItem('weeklyAutoBackups') || '[]');
+  const backups = JSON.parse(localStorage.getItem('dailyAutoBackups') || localStorage.getItem('weeklyAutoBackups') || '[]');
   if(!backups.length){
-    alert('Sem backups semanais.');
+    alert('Sem backups diários.');
     return;
   }
   const latest = backups[backups.length - 1];
@@ -3673,7 +3709,7 @@ function downloadLatestWeeklyBackup(){
   const blob = new Blob([JSON.stringify(latest, null, 2)], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `backup-semanal-${stamp}.json`;
+  a.download = `backup-diario-${stamp}.json`;
   document.body.appendChild(a);
   a.click();
   setTimeout(() => {
@@ -3681,6 +3717,7 @@ function downloadLatestWeeklyBackup(){
     a.remove();
   }, 1500);
 }
+
 
 
 document.addEventListener("DOMContentLoaded", function(){
@@ -3699,7 +3736,7 @@ document.addEventListener("DOMContentLoaded", function(){
           <h3>Backups</h3>
           <p>Proteção automática e recuperação rápida dos dados da app.</p>
         </div>
-        <span class="backups-premium-pill">Semanal Automático</span>
+        <span id="backupModeBadge" class="backups-premium-pill daily">Diário Automático</span>
       </div>
 
       <div class="backups-premium-grid">
@@ -3710,6 +3747,10 @@ document.addEventListener("DOMContentLoaded", function(){
         <div class="backups-premium-stat">
           <span class="label">Backups guardados</span>
           <span class="value" id="backupCountStatus">0</span>
+        </div>
+        <div class="backups-premium-stat">
+          <span class="label">Estado do backup</span>
+          <span class="value" id="backupTodayStatus">Pendente</span>
         </div>
       </div>
 
@@ -3737,42 +3778,47 @@ function isFriday(){
 }
 
 function getLastBackupDay(){
-  return localStorage.getItem("backupFridayDone");
+  return localStorage.getItem("dailyAutoBackupLastDate") || localStorage.getItem("backupFridayDone");
 }
 
 function setBackupDoneToday(){
   const today = new Date().toISOString().split('T')[0];
+  localStorage.setItem("dailyAutoBackupLastDate", today);
   localStorage.setItem("backupFridayDone", today);
 }
+
+
 
 function fazerBackupSexta(){
   const hoje = new Date().toISOString().split('T')[0];
   const ultimo = getLastBackupDay();
 
-  if(!isFriday()) return;
-
-  if(ultimo === hoje) return;
+  if(String(ultimo || '').slice(0,10) === hoje) return;
 
   const data = {
-    trabalhos: JSON.parse(localStorage.getItem("trabalhos") || "[]"),
-    clientes: JSON.parse(localStorage.getItem("clientes") || "[]"),
-    pagamentos: JSON.parse(localStorage.getItem("pagamentos") || "[]"),
+    trabalhos: JSON.parse(localStorage.getItem("trabalhos") || localStorage.getItem("ge_trabalhos") || "[]"),
+    clientes: JSON.parse(localStorage.getItem("clientes") || localStorage.getItem("ge_clientes") || "[]"),
+    pagamentos: JSON.parse(localStorage.getItem("pagamentos") || localStorage.getItem("ge_pagamentos") || "[]"),
     dataBackup: new Date().toISOString()
   };
 
-  const backups = JSON.parse(localStorage.getItem("backupFridayHistory") || "[]");
+  const backups = JSON.parse(localStorage.getItem("dailyAutoBackups") || localStorage.getItem("backupFridayHistory") || "[]");
   backups.push(data);
 
-  if(backups.length > 10){
+  if(backups.length > 30){
     backups.shift();
   }
 
+  localStorage.setItem("dailyAutoBackups", JSON.stringify(backups));
   localStorage.setItem("backupFridayHistory", JSON.stringify(backups));
 
   setBackupDoneToday();
 
   mostrarAvisoBackup();
+  refreshBackupStatusUi();
+  try{ updateBackupWeekIndicator(); }catch(e){}
 }
+
 
 function mostrarAvisoBackup(){
   const aviso = document.createElement("div");
@@ -3790,7 +3836,7 @@ function mostrarAvisoBackup(){
       color:white;
       font-size:13px;
     ">
-      Backup semanal criado ✔
+      Backup diário criado ✔
       <br>
       <button onclick="exportBackupManual()" style="margin-top:6px">Exportar agora</button>
     </div>
@@ -3810,43 +3856,49 @@ function getWeekStart(dateObj){
   return d;
 }
 
+
 function updateBackupWeekIndicator(){
-  const badge = document.getElementById('backupWeekBadge');
+  const badge = document.getElementById('backupModeBadge') || document.getElementById('backupWeekBadge');
   const weekStatus = document.getElementById('backupWeekStatus');
   const lastStatus = document.getElementById('backupLastStatus');
   const countStatus = document.getElementById('backupCountStatus');
+  const todayStatus = document.getElementById('backupTodayStatus');
 
-  const backups = JSON.parse(localStorage.getItem('backupFridayHistory') || '[]');
-  const lastDateIso = localStorage.getItem('backupFridayDone') || localStorage.getItem('weeklyAutoBackupLastDate') || '';
-  const lastDate = lastDateIso ? new Date(lastDateIso) : null;
-  const now = new Date();
-
-  let hasThisWeek = false;
-  if(lastDate && !isNaN(lastDate.getTime())){
-    const weekStartNow = getWeekStart(now).getTime();
-    const weekStartLast = getWeekStart(lastDate).getTime();
-    hasThisWeek = weekStartNow === weekStartLast;
-  }
+  const backups = JSON.parse(localStorage.getItem('dailyAutoBackups') || localStorage.getItem('backupFridayHistory') || localStorage.getItem('weeklyAutoBackups') || '[]');
+  const lastDateIso = localStorage.getItem('dailyAutoBackupLastDate') || localStorage.getItem('backupFridayDone') || localStorage.getItem('weeklyAutoBackupLastDate') || '';
+  const todayIso = new Date().toISOString().split('T')[0];
+  const hasToday = String(lastDateIso || '').slice(0,10) === todayIso;
 
   if(lastStatus) lastStatus.textContent = lastDateIso ? fmtDate(lastDateIso) : '--';
   if(countStatus) countStatus.textContent = String(backups.length);
 
-  if(hasThisWeek){
-    if(weekStatus) weekStatus.textContent = 'Backup feito';
+  if(hasToday){
+    if(todayStatus) todayStatus.textContent = 'Feito hoje';
+    if(weekStatus) weekStatus.textContent = 'Backup diário feito';
     if(badge){
-      badge.textContent = 'Feito esta semana';
-      badge.classList.remove('warn');
+      badge.textContent = 'Diário OK';
+      badge.classList.remove('warn','error');
       badge.classList.add('ok');
     }
-  }else{
-    if(weekStatus) weekStatus.textContent = 'Falta backup';
+  }else if(lastDateIso){
+    if(todayStatus) todayStatus.textContent = 'Pendente hoje';
+    if(weekStatus) weekStatus.textContent = 'Falta backup hoje';
     if(badge){
-      badge.textContent = 'Falta backup';
-      badge.classList.remove('ok');
+      badge.textContent = 'Pendente hoje';
+      badge.classList.remove('ok','error');
       badge.classList.add('warn');
+    }
+  }else{
+    if(todayStatus) todayStatus.textContent = 'Sem backup';
+    if(weekStatus) weekStatus.textContent = 'Sem backup';
+    if(badge){
+      badge.textContent = 'Sem backup';
+      badge.classList.remove('ok','warn');
+      badge.classList.add('error');
     }
   }
 }
+
 
 
 function getReportWorkList(){
@@ -6109,6 +6161,24 @@ td.acoes-col, .acoes-col{
   background:linear-gradient(180deg, rgba(168,85,247,.24), rgba(126,34,206,.16));
   border:1px solid rgba(216,180,254,.32);
 }
+.backups-premium-pill.daily{
+  color:#e9d5ff;
+}
+.backups-premium-pill.ok{
+  color:#dcfce7;
+  background:linear-gradient(180deg, rgba(34,197,94,.22), rgba(22,163,74,.16));
+  border-color:rgba(74,222,128,.36);
+}
+.backups-premium-pill.warn{
+  color:#fef3c7;
+  background:linear-gradient(180deg, rgba(245,158,11,.22), rgba(217,119,6,.16));
+  border-color:rgba(251,191,36,.36);
+}
+.backups-premium-pill.error{
+  color:#fee2e2;
+  background:linear-gradient(180deg, rgba(239,68,68,.22), rgba(185,28,28,.16));
+  border-color:rgba(248,113,113,.36);
+}
 .backups-premium-grid{
   display:grid;
   grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
@@ -7587,7 +7657,7 @@ function isFriday(){
 }
 
 function getLastBackupDay(){
-  return localStorage.getItem("backupFridayDone");
+  return localStorage.getItem("dailyAutoBackupLastDate") || localStorage.getItem("backupFridayDone");
 }
 
 function setBackupDoneToday(){
@@ -7640,7 +7710,7 @@ function mostrarAvisoBackup(){
       color:white;
       font-size:13px;
     ">
-      Backup semanal criado ✔
+      Backup diário criado ✔
       <br>
       <button onclick="exportBackupManual()" style="margin-top:6px">Exportar agora</button>
     </div>
@@ -8121,47 +8191,3 @@ function printProfessionalReport(){
 
 </body>
 </html>
-
-<script>
-
-// ================= BACKUP DIARIO =================
-async function executarBackupDiario() {
-  try {
-    const hoje = new Date().toISOString().split("T")[0];
-    const ultimo = localStorage.getItem("ultimo_backup_dia");
-
-    if (ultimo === hoje) return;
-
-    const trabalhos = JSON.parse(localStorage.getItem("ge_trabalhos") || "[]");
-    const clientes = JSON.parse(localStorage.getItem("ge_clientes") || "[]");
-    const pagamentos = JSON.parse(localStorage.getItem("ge_pagamentos") || "[]");
-
-    const backup = { data: new Date().toISOString(), trabalhos, clientes, pagamentos };
-
-    let lista = JSON.parse(localStorage.getItem("backups_diarios") || "[]");
-    lista.push(backup);
-    if (lista.length > 30) lista.shift();
-
-    localStorage.setItem("backups_diarios", JSON.stringify(lista));
-    localStorage.setItem("ultimo_backup_dia", hoje);
-
-    console.log("BACKUP OK");
-
-    if (window.firestoreDb && window.setDoc) {
-      const id = "backup_" + Date.now();
-      await window.setDoc(window.doc(window.firestoreDb, "daily_backups", id), {
-        data: backup.data,
-        total: trabalhos.length
-      });
-    }
-
-  } catch(e){
-    console.error("Erro backup", e);
-  }
-}
-
-window.addEventListener("load", () => setTimeout(executarBackupDiario,2000));
-window.addEventListener("focus", executarBackupDiario);
-// ================= END BACKUP =================
-
-</script>
