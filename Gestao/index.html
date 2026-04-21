@@ -3067,13 +3067,15 @@ function recalcLastTrabIdFromList(trabalhosLista){
 
 async function waitForFirebaseUser(timeoutMs = 15000){
   try{
-    if(typeof firebaseAuth === 'undefined' || !firebaseAuth) return null;
-    if(firebaseAuth.currentUser) return firebaseAuth.currentUser;
-    if(typeof firebaseAuth.authStateReady === 'function'){
-      try{ await Promise.race([firebaseAuth.authStateReady(), new Promise(resolve => setTimeout(resolve, timeoutMs))]); }catch(e){}
-      if(firebaseAuth.currentUser) return firebaseAuth.currentUser;
+    const authObj = window.firebaseAuth || null;
+    if(!authObj) return null;
+    if(authObj.currentUser) return authObj.currentUser;
+    if(typeof authObj.authStateReady === 'function'){
+      try{ await Promise.race([authObj.authStateReady(), new Promise(resolve => setTimeout(resolve, timeoutMs))]); }catch(e){}
+      if(authObj.currentUser) return authObj.currentUser;
     }
-    if(typeof onAuthStateChanged !== 'function') return firebaseAuth.currentUser || null;
+    const onAuthStateChangedFn = window.onAuthStateChanged;
+    if(typeof onAuthStateChangedFn !== 'function') return authObj.currentUser || null;
     return await new Promise(resolve => {
       let done = false;
       let unsub = null;
@@ -3081,39 +3083,44 @@ async function waitForFirebaseUser(timeoutMs = 15000){
         if(done) return;
         done = true;
         try{ if(typeof unsub === 'function') unsub(); }catch(e){}
-        resolve(user || firebaseAuth.currentUser || null);
+        resolve(user || authObj.currentUser || null);
       };
-      const timer = setTimeout(() => finish(firebaseAuth.currentUser || null), timeoutMs);
+      const timer = setTimeout(() => finish(authObj.currentUser || null), timeoutMs);
       try{
-        unsub = onAuthStateChanged(firebaseAuth, user => {
+        unsub = onAuthStateChangedFn(authObj, user => {
           clearTimeout(timer);
-          finish(user || firebaseAuth.currentUser || null);
+          finish(user || authObj.currentUser || null);
         }, () => {
           clearTimeout(timer);
-          finish(firebaseAuth.currentUser || null);
+          finish(authObj.currentUser || null);
         });
       }catch(err){
         clearTimeout(timer);
-        finish(firebaseAuth.currentUser || null);
+        finish(authObj.currentUser || null);
       }
     });
   }catch(err){
     console.warn('Não foi possível esperar pelo utilizador Firebase:', err);
-    return (typeof firebaseAuth !== 'undefined' && firebaseAuth) ? (firebaseAuth.currentUser || null) : null;
+    return (window.firebaseAuth) ? (window.firebaseAuth.currentUser || null) : null;
   }
 }
 
 async function syncBackupCollectionToFirebase(collectionName, items){
   if(!Array.isArray(items)) return { upserts:0, deletes:0, failures:0, skipped:false, reason:'' };
-  if(typeof ensureFirebaseReady !== 'function' || typeof getDocs !== 'function' || typeof collection !== 'function' || typeof writeBatch !== 'function'){
+  const ensureReady = window.ensureFirebaseReady || window.ensureFirebaseCore || null;
+  if(typeof ensureReady === 'function'){
+    try{ await ensureReady(); }catch(e){ console.warn('Falha ao preparar Firebase para import:', e); }
+  }
+  const getDocsFn = window.getDocs;
+  const collectionFn = window.collection;
+  const writeBatchFn = window.writeBatch;
+  const docFn = window.doc;
+  const dbObj = window.firestoreDb;
+  if(typeof getDocsFn !== 'function' || typeof collectionFn !== 'function' || typeof writeBatchFn !== 'function' || typeof docFn !== 'function' || !dbObj){
     return { upserts:0, deletes:0, failures:0, skipped:true, reason:'firebase-api-indisponivel' };
   }
 
-  await ensureFirebaseReady();
-  if(!firestoreDb){
-    console.warn('Import sem Firestore pronto em', collectionName);
-    return { upserts:0, deletes:0, failures:0, skipped:true, reason:'firebase-api-indisponivel' };
-  }
+  try{ await waitForFirebaseUser(4000); }catch(e){}
 
   const normalized = [];
   for(const rawItem of items){
@@ -3127,7 +3134,7 @@ async function syncBackupCollectionToFirebase(collectionName, items){
 
   let remoteIds = new Set();
   try{
-    const snap = await getDocs(collection(firestoreDb, collectionName));
+    const snap = await getDocsFn(collectionFn(dbObj, collectionName));
     remoteIds = new Set((snap.docs || []).map(docSnap => String(docSnap.id)));
   }catch(err){
     console.error('Falha ao ler coleção remota antes do import:', collectionName, err);
@@ -3143,9 +3150,9 @@ async function syncBackupCollectionToFirebase(collectionName, items){
   const chunkSize = 350;
   for(let i = 0; i < normalized.length; i += chunkSize){
     const chunk = normalized.slice(i, i + chunkSize);
-    const batch = writeBatch(firestoreDb);
+    const batch = writeBatchFn(dbObj);
     for(const item of chunk){
-      batch.set(doc(firestoreDb, collectionName, item.id), item, { merge:true });
+      batch.set(docFn(dbObj, collectionName, item.id), item, { merge:true });
     }
     try{
       await batch.commit();
@@ -3160,9 +3167,9 @@ async function syncBackupCollectionToFirebase(collectionName, items){
   const idsToDelete = Array.from(remoteIds).filter(id => !nextIds.has(id));
   for(let i = 0; i < idsToDelete.length; i += chunkSize){
     const chunk = idsToDelete.slice(i, i + chunkSize);
-    const batch = writeBatch(firestoreDb);
+    const batch = writeBatchFn(dbObj);
     for(const id of chunk){
-      batch.delete(doc(firestoreDb, collectionName, id));
+      batch.delete(docFn(dbObj, collectionName, id));
     }
     try{
       await batch.commit();
@@ -3927,6 +3934,7 @@ const ONLINE_WIDGET_KEY = 'ge_online_widget_hidden';
 
 let authBootstrapped = false;
 let authListenerAttached = false;
+if(typeof window !== 'undefined'){ window.firebaseApp = firebaseApp; window.firebaseAuth = firebaseAuth; window.firestoreDb = firestoreDb; }
 
 function deriveLoginUsername(user){
   const email = String(user?.email || '').trim();
@@ -3978,23 +3986,21 @@ async function ensureFirebaseCore(){
   if (!firebaseAuth) firebaseAuth = getAuth(firebaseApp);
   if (!firestoreDb) firestoreDb = getFirestore(firebaseApp);
   try{ await setPersistence(firebaseAuth, browserLocalPersistence); }catch(e){}
+  if(typeof window !== 'undefined'){
+    window.firebaseApp = firebaseApp;
+    window.firebaseAuth = firebaseAuth;
+    window.firestoreDb = firestoreDb;
+    window.ensureFirebaseCore = ensureFirebaseCore;
+    window.onAuthStateChanged = onAuthStateChanged;
+    window.getDocs = getDocs;
+    window.collection = collection;
+    window.writeBatch = writeBatch;
+    window.doc = doc;
+    window.setDoc = setDoc;
+    window.deleteDoc = deleteDoc;
+  }
   return true;
 }
-
-window.ensureFirebaseCore = ensureFirebaseCore;
-Object.defineProperty(window, 'firebaseAuth', { configurable:true, get: () => firebaseAuth });
-Object.defineProperty(window, 'firestoreDb', { configurable:true, get: () => firestoreDb });
-window.onAuthStateChanged = onAuthStateChanged;
-window.signInWithEmailAndPassword = signInWithEmailAndPassword;
-window.signOut = signOut;
-window.collection = collection;
-window.doc = doc;
-window.setDoc = setDoc;
-window.getDoc = getDoc;
-window.getDocs = getDocs;
-window.deleteDoc = deleteDoc;
-window.onSnapshot = onSnapshot;
-window.writeBatch = writeBatch;
 
 function normalizePresenceId(){
   const email = normalizeRoleEmail(currentUserEmail || firebaseAuth?.currentUser?.email);
@@ -4148,17 +4154,11 @@ async function applyAuthenticatedSession(user){
   const role = await fetchRoleForUser(user);
   const username = deriveLoginUsername(user);
   currentUserEmail = normalizeRoleEmail(user?.email);
-  currentRole = role;
-  currentUsername = username;
   if(window.showApp) window.showApp();
   const loginError = $('loginError');
   if(loginError) loginError.textContent = '';
-  try{
-    if(window.startApp){
-      window.startApp(role, username);
-    }
-  }catch(err){
-    console.error('Erro ao arrancar app após login:', err);
+  if(window.startApp){
+    window.startApp(role, username);
   }
   initOnlineUsersUi();
   startPresenceTracking();
@@ -4169,11 +4169,8 @@ function attachPrimaryAuthListener(){
   onAuthStateChanged(firebaseAuth, user => {
     if(user && !user.isAnonymous){
       applyAuthenticatedSession(user).catch(err => console.error('Erro ao aplicar sessão autenticada:', err));
-    }else{
+    }else if(!currentUsername){
       stopPresenceTracking();
-      currentRole = null;
-      currentUsername = null;
-      currentUserEmail = null;
       if(window.showLogin) window.showLogin();
     }
   });
@@ -4192,20 +4189,14 @@ async function initFirebaseEmailLogin(){
       const email = String($('loginUsername')?.value || '').trim();
       const password = String($('loginPassword')?.value || '');
       const errBox = $('loginError');
-      const submitBtn = loginFormEl.querySelector('button[type="submit"]');
-      const originalBtnText = submitBtn ? submitBtn.textContent : '';
       if(errBox) errBox.textContent = '';
       if(!email || !password){
         if(errBox) errBox.textContent = 'Preenche email e palavra-passe.';
         return;
       }
       try{
-        if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'A entrar...'; }
         await ensureFirebaseCore();
-        const cred = await signInWithEmailAndPassword(firebaseAuth, email, password);
-        if(cred?.user){
-          await applyAuthenticatedSession(cred.user);
-        }
+        await signInWithEmailAndPassword(firebaseAuth, email, password);
       }catch(err){
         console.error('Erro no login Firebase:', err);
         const code = String(err?.code || '');
@@ -4213,11 +4204,8 @@ async function initFirebaseEmailLogin(){
           : code === 'auth/invalid-email' ? 'Email inválido.'
           : code === 'auth/user-disabled' ? 'Utilizador desativado.'
           : code === 'auth/too-many-requests' ? 'Demasiadas tentativas. Tenta novamente mais tarde.'
-          : code === 'auth/network-request-failed' ? 'Falha de rede. Tenta novamente.'
           : 'Não foi possível iniciar sessão.';
         if(errBox) errBox.textContent = msg;
-      }finally{
-        if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = originalBtnText || 'Entrar'; }
       }
     });
   }
@@ -4240,9 +4228,8 @@ async function initFirebaseEmailLogin(){
     $('loginForm')?.reset();
   };
 
-  const existingUser = await waitForFirebaseUser(2500);
-  if(existingUser && !existingUser.isAnonymous){
-    await applyAuthenticatedSession(existingUser);
+  if(firebaseAuth.currentUser && !firebaseAuth.currentUser.isAnonymous){
+    applyAuthenticatedSession(firebaseAuth.currentUser);
   }else if(window.showLogin){
     window.showLogin();
   }
@@ -4914,6 +4901,11 @@ async function ensureFirebaseReady(timeoutMs = 12000){
   if (!firestoreDb) {
     await initFirebaseSync();
     await waitForFirebaseSyncReady(timeoutMs);
+  }
+  if(typeof window !== 'undefined'){
+    window.ensureFirebaseReady = ensureFirebaseReady;
+    window.firestoreDb = firestoreDb;
+    window.firebaseAuth = firebaseAuth;
   }
   return true;
 }
