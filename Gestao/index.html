@@ -6,7 +6,7 @@
   <title>Jorge Torneiro</title>
   <meta name="theme-color" content="#0b1020" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="icon" href="favicon.ico" sizes="any" />F
+  <link rel="icon" href="favicon.ico" sizes="any" />
   <link rel="icon" type="image/png" href="favicon-32.png" sizes="32x32" />
   <link rel="icon" type="image/png" href="favicon-16.png" sizes="16x16" />
   <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png" />
@@ -2664,25 +2664,25 @@ td.acoes-col, .acoes-col{
 
             <div class="content-grid single-panel-grid">
               <section class="panel admin-only form-panel">
-                <div class="panel-head"><h3>Novo utilizador</h3></div>
+                <div class="panel-head"><h3>Roles de utilizador</h3></div>
                 <form id="userManagerForm" class="form-grid">
                   <input type="hidden" id="managedUserIndex" />
-                  <div class="field"><label>Nome</label><input id="managedUsername" type="text" required /></div>
-                  <div class="field"><label>Palavra-passe</label><input id="managedPassword" type="text" required /></div>
+                  <div class="field"><label>Email</label><input id="managedUsername" type="email" placeholder="utilizador@empresa.com" required /></div>
                   <div class="field"><label>Tipo</label><select id="managedRole"><option value="user">User</option><option value="admin">Admin</option><option value="master_admin">Master Admin</option></select></div>
                   <div class="field field-span-2">
                     <div class="inline-actions">
-                      <button type="submit" class="btn btn-primary">Guardar utilizador</button>
+                      <button type="submit" class="btn btn-primary">Guardar role</button>
                       <button type="button" class="btn btn-secondary" id="clearManagedUserBtn">Limpar</button>
                     </div>
                   </div>
                 </form>
+                <small style="display:block;margin-top:10px;opacity:.8">A conta precisa existir no Firebase Auth. Aqui só defines a role.</small>
               </section>
               <section class="panel wide-panel history-panel">
                 <div class="panel-head"><h3>Lista de utilizadores</h3></div>
                 <div class="table-wrap">
                   <table>
-                    <thead><tr><th>Nome</th><th>Tipo</th><th>Ações</th></tr></thead>
+                    <thead><tr><th>Email</th><th>Tipo</th><th>Ações</th></tr></thead>
                     <tbody id="managedUsersTableBody"></tbody>
                   </table>
                 </div>
@@ -3380,23 +3380,26 @@ function printProfessionalReport(){
 </script>
   <script type="module">
 const firebaseConfig = {
-  apiKey: "AIzaSyD2nCoO5TP56H_gm5SBWM6DLf_SZW1UPxI",
-  authDomain: "app-gestao-c932d.firebaseapp.com",
-  projectId: "app-gestao-c932d",
-  storageBucket: "app-gestao-c932d.firebasestorage.app",
-  messagingSenderId: "318015040210",
-  appId: "1:318015040210:web:e3070e6b8f4d74a8799b0b"
+  apiKey: "AIzaSyDbiMRCFhD9WC4Z17fc9M9uXdY8ETUO05Q",
+  authDomain: "app-pai-feb73.firebaseapp.com",
+  projectId: "app-pai-feb73",
+  storageBucket: "app-pai-feb73.appspot.com",
+  messagingSenderId: "594270955224",
+  appId: "1:594270955224:web:85d1d530889704d0f359ad"
 };
 
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const APP_VERSION = '1.0.6';
 const STORAGE_KEYS = { trabalhos:'ge_trabalhos', clientes:'ge_clientes', pagamentos:'ge_pagamentos' , lastTrabId:'ge_last_trab_id' };
 
-let currentRole = null, currentUsername = null;
+let currentRole = null, currentUsername = null, currentUserEmail = null;
+let managedUsersCache = [];
+const ROLE_COLLECTION = 'user_roles';
+const MASTER_EMAILS = ['pica.fern@gmail.com'];
 let trabalhos = [], clientes = [], pagamentos = [];
 let lastTrabId = 0;
 
@@ -3411,13 +3414,50 @@ let unsubs = [];
 let authBootstrapped = false;
 let authListenerAttached = false;
 
-function deriveLoginRole(user){
-  return 'master_admin';
-}
 function deriveLoginUsername(user){
   const email = String(user?.email || '').trim();
   if(email) return email.split('@')[0];
   return String(user?.uid || 'utilizador');
+}
+function normalizeRoleValue(role){
+  const value = String(role || 'user').toLowerCase();
+  return ['user','admin','master_admin'].includes(value) ? value : 'user';
+}
+function normalizeRoleEmail(email){
+  return String(email || '').trim().toLowerCase();
+}
+function isMasterEmail(email){
+  return MASTER_EMAILS.includes(normalizeRoleEmail(email));
+}
+async function ensureRoleSeed(email, role='user'){
+  const cleanEmail = normalizeRoleEmail(email);
+  if(!cleanEmail || !firestoreDb) return;
+  try{
+    await setDoc(doc(firestoreDb, ROLE_COLLECTION, cleanEmail), {
+      email: cleanEmail,
+      role: normalizeRoleValue(role),
+      updatedAt: new Date().toISOString()
+    }, { merge:true });
+  }catch(err){
+    console.warn('Não foi possível gravar role seed:', err);
+  }
+}
+async function fetchRoleForUser(user){
+  const email = normalizeRoleEmail(user?.email);
+  if(!email) return 'user';
+  if(isMasterEmail(email)){
+    await ensureRoleSeed(email, 'master_admin');
+    return 'master_admin';
+  }
+  if(!firestoreDb) return 'user';
+  try{
+    const snap = await getDoc(doc(firestoreDb, ROLE_COLLECTION, email));
+    if(snap.exists()) return normalizeRoleValue(snap.data()?.role);
+  }catch(err){
+    console.warn('Não foi possível ler role do utilizador:', err);
+  }
+  await ensureRoleSeed(email, 'user');
+  return 'user';
 }
 async function ensureFirebaseCore(){
   if (!firebaseApp) firebaseApp = initializeApp(firebaseConfig);
@@ -3426,9 +3466,11 @@ async function ensureFirebaseCore(){
   try{ await setPersistence(firebaseAuth, browserLocalPersistence); }catch(e){}
   return true;
 }
-function applyAuthenticatedSession(user){
-  const role = deriveLoginRole(user);
+async function applyAuthenticatedSession(user){
+  await ensureFirebaseCore();
+  const role = await fetchRoleForUser(user);
   const username = deriveLoginUsername(user);
+  currentUserEmail = normalizeRoleEmail(user?.email);
   if(window.showApp) window.showApp();
   const loginError = $('loginError');
   if(loginError) loginError.textContent = '';
@@ -3441,7 +3483,7 @@ function attachPrimaryAuthListener(){
   authListenerAttached = true;
   onAuthStateChanged(firebaseAuth, user => {
     if(user && !user.isAnonymous){
-      applyAuthenticatedSession(user);
+      applyAuthenticatedSession(user).catch(err => console.error('Erro ao aplicar sessão autenticada:', err));
     }else if(!currentUsername){
       if(window.showLogin) window.showLogin();
     }
@@ -3493,6 +3535,7 @@ async function initFirebaseEmailLogin(){
     }
     currentRole = null;
     currentUsername = null;
+    currentUserEmail = null;
     if(window.showLogin) window.showLogin();
     $('loginForm')?.reset();
   };
@@ -3875,43 +3918,67 @@ function fillClientContactFromSelection(){
 
 
 function normalizeManagedUsers(users){
-  const list = Array.isArray(users) ? users.slice() : [];
-  const idx = list.findIndex(u => String(u.username || '').toLowerCase() === 'ricardo');
-  const ricardo = { username: 'ricardo', password: '2297', role: 'master_admin' };
-  if(idx >= 0) list[idx] = { ...list[idx], ...ricardo };
-  else list.push(ricardo);
-  return list;
+  const map = new Map();
+  (Array.isArray(users) ? users : []).forEach((u) => {
+    const email = normalizeRoleEmail(u.email || u.username);
+    if(!email) return;
+    map.set(email, { email, username: email, role: normalizeRoleValue(u.role) });
+  });
+  MASTER_EMAILS.forEach(email => {
+    map.set(email, { email, username: email, role: 'master_admin' });
+  });
+  return Array.from(map.values()).sort((a,b)=> (a.email || '').localeCompare(b.email || ''));
 }
 
 function getManagedUsers(){
+  if(Array.isArray(managedUsersCache) && managedUsersCache.length) return managedUsersCache;
   try{
     const stored = JSON.parse(localStorage.getItem('app_users') || 'null');
     if(Array.isArray(stored) && stored.length){
-      const fixed = normalizeManagedUsers(stored);
-      localStorage.setItem('app_users', JSON.stringify(fixed));
-      return fixed;
+      managedUsersCache = normalizeManagedUsers(stored);
+      localStorage.setItem('app_users', JSON.stringify(managedUsersCache));
+      return managedUsersCache;
     }
   }catch{}
-  const fixedDefaults = normalizeManagedUsers([
-    { username: 'jorge', password: 'jfernandes', role: 'admin' },
-    { username: 'fatima', password: 'ffernandes', role: 'user' },
-    { username: 'ricardo', password: '2297', role: 'master_admin' }
-  ]);
-  localStorage.setItem('app_users', JSON.stringify(fixedDefaults));
-  return fixedDefaults;
+  managedUsersCache = normalizeManagedUsers([]);
+  localStorage.setItem('app_users', JSON.stringify(managedUsersCache));
+  return managedUsersCache;
 }
 
 function saveManagedUsers(users){
-  localStorage.setItem('app_users', JSON.stringify(users));
+  managedUsersCache = normalizeManagedUsers(users);
+  localStorage.setItem('app_users', JSON.stringify(managedUsersCache));
 }
 
-function renderManagedUsers(){
+async function loadManagedUsersFromFirestore(){
+  try{
+    await ensureFirebaseCore();
+    if(!firestoreDb) return getManagedUsers();
+    const snap = await getDocs(collection(firestoreDb, ROLE_COLLECTION));
+    const users = [];
+    snap.forEach(docSnap => {
+      const data = docSnap.data() || {};
+      users.push({ email: normalizeRoleEmail(data.email || docSnap.id), role: normalizeRoleValue(data.role) });
+    });
+    MASTER_EMAILS.forEach(email => {
+      if(!users.some(u => normalizeRoleEmail(u.email) === email)) users.push({ email, role:'master_admin' });
+    });
+    saveManagedUsers(users);
+    return managedUsersCache;
+  }catch(err){
+    console.warn('Não foi possível carregar roles:', err);
+    return getManagedUsers();
+  }
+}
+
+async function renderManagedUsers(){
   const tbody = $('managedUsersTableBody');
   if(!tbody) return;
-  const users = getManagedUsers();
+  tbody.innerHTML = '<tr><td colspan="3">A carregar...</td></tr>';
+  const users = await loadManagedUsersFromFirestore();
   tbody.innerHTML = users.length ? users.map((u, idx) => `
     <tr>
-      <td>${escapeHtml(u.username || '-')}</td>
+      <td>${escapeHtml(u.email || u.username || '-')}</td>
       <td>${escapeHtml(u.role || 'user')}</td>
       <td>
         <div class="row-actions">
@@ -3929,8 +3996,7 @@ window.editManagedUser = function(index){
   const u = users[index];
   if(!u) return;
   $('managedUserIndex').value = String(index);
-  $('managedUsername').value = u.username || '';
-  $('managedPassword').value = u.password || '';
+  $('managedUsername').value = u.email || u.username || '';
   $('managedRole').value = u.role || 'user';
   switchTab('configuracoes');
 };
@@ -3940,10 +4006,21 @@ window.deleteManagedUser = function(index){
   const users = getManagedUsers();
   const u = users[index];
   if(!u) return;
-  if(!confirm(`Apagar o utilizador ${u.username}?`)) return;
-  users.splice(index, 1);
-  saveManagedUsers(users);
-  renderManagedUsers();
+  const targetEmail = normalizeRoleEmail(u.email || u.username);
+  if(isMasterEmail(targetEmail)){ alert('O Admin Mestre não pode ser apagado.'); return; }
+  if(!confirm(`Apagar o utilizador ${targetEmail}?`)) return;
+  (async()=>{
+    try{
+      await ensureFirebaseCore();
+      await deleteDoc(doc(firestoreDb, ROLE_COLLECTION, targetEmail));
+      const users = getManagedUsers().filter(item => normalizeRoleEmail(item.email || item.username) !== targetEmail);
+      saveManagedUsers(users);
+      renderManagedUsers();
+    }catch(err){
+      console.error('Erro ao apagar role:', err);
+      alert('Não foi possível apagar a role.');
+    }
+  })();
   updateWorkCodePreview();
   updateWorkCodePreview();
   renderMobileCards();
@@ -6023,42 +6100,42 @@ $('paymentConfirmBtn')?.addEventListener('click', async ()=>{
 $('cliente')?.addEventListener('change', fillClientContactFromSelection);
 
 
-$('userManagerForm')?.addEventListener('submit', (e) => {
+$('userManagerForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   if(!isMasterAdmin()) return;
 
-  const indexRaw = $('managedUserIndex').value;
-  const username = $('managedUsername').value.trim();
-  const password = $('managedPassword').value.trim();
-  const role = $('managedRole').value;
+  const email = normalizeRoleEmail($('managedUsername').value);
+  const role = normalizeRoleValue($('managedRole').value);
 
-  if(!username || !password){
-    alert('Preenche nome e palavra-passe.');
+  if(!email){
+    alert('Preenche o email do utilizador.');
     return;
   }
 
-  const users = getManagedUsers();
-  const item = { username, password, role };
-
-  if(indexRaw !== ''){
-    users[Number(indexRaw)] = item;
-  }else{
-    const exists = users.some(u => (u.username || '').toLowerCase() === username.toLowerCase());
-    if(exists){
-      alert('Esse utilizador já existe.');
-      return;
+  try{
+    await ensureFirebaseCore();
+    await setDoc(doc(firestoreDb, ROLE_COLLECTION, email), {
+      email,
+      role,
+      updatedAt: new Date().toISOString()
+    }, { merge:true });
+    await loadManagedUsersFromFirestore();
+    $('userManagerForm').reset();
+    $('managedUserIndex').value = '';
+    $('managedRole').value = 'user';
+    renderManagedUsers();
+    updateWorkCodePreview();
+    updateWorkCodePreview();
+    renderMobileCards();
+    if(currentUserEmail && currentUserEmail === email){
+      currentRole = role;
+      setRoleUI();
+      renderAll();
     }
-    users.push(item);
+  }catch(err){
+    console.error('Erro ao guardar role:', err);
+    alert('Não foi possível guardar a role.');
   }
-
-  saveManagedUsers(users);
-  $('userManagerForm').reset();
-  $('managedUserIndex').value = '';
-  $('managedRole').value = 'user';
-  renderManagedUsers();
-  updateWorkCodePreview();
-  updateWorkCodePreview();
-  renderMobileCards();
 });
 
 $('clearManagedUserBtn')?.addEventListener('click', ()=>{
