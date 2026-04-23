@@ -824,6 +824,11 @@ function renderAll() {
 }
 
 function switchPage(page) {
+  if (page === "config" && !isAdmin()) {
+    toast("Só admin pode abrir configurações");
+    return;
+  }
+
   if (page === "users" && !canManageUsers()) {
     toast("Só admin pode abrir gestão de utilizadores");
     return;
