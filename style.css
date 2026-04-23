@@ -251,3 +251,43 @@ button,
   background: rgba(255,92,114,.14);
   border-color: rgba(255,92,114,.26);
 }
+
+
+/* Modo Empresa Extremo Users */
+.mini-section {
+  margin: 14px 0;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,.045);
+}
+
+.mini-section h4 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  letter-spacing: -.02em;
+}
+
+.user-card .role-admin { color: #9ff2c5; }
+.user-card .role-gerente { color: #b9d5ff; }
+.user-card .role-user { color: #ffd7a0; }
+.user-card .role-viewer { color: #d9b6df; }
+
+.user-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,.07);
+  color: var(--muted);
+  font-weight: 900;
+  font-size: 12px;
+}

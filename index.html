@@ -254,14 +254,27 @@
                 <span class="pill">Só Admin</span>
               </div>
 
-              <p class="muted">
-                Primeiro cria o utilizador no Firebase Authentication. Depois cola aqui o UID e cria o perfil.
-              </p>
+              <p class="muted">Modo Empresa Extremo: podes criar o login e o perfil diretamente aqui. Só admin consegue usar esta página.</p>
 
-              <label class="wide-label">
-                <span>UID do utilizador</span>
-                <input id="userUid" type="text" placeholder="UID do Firebase Authentication" />
-              </label>
+              <div class="mini-section">
+                <h4>Criar login</h4>
+                <label class="wide-label">
+                  <span>Email para login</span>
+                  <input id="newAuthEmail" type="email" placeholder="email@loja.com" autocomplete="off" />
+                </label>
+                <label class="wide-label">
+                  <span>Password temporária</span>
+                  <input id="newAuthPassword" type="password" placeholder="mínimo 6 caracteres" autocomplete="new-password" />
+                </label>
+                <button class="primary-btn full" id="createAuthUserBtn" type="button">Criar login + preencher UID</button>
+              </div>
+
+              <div class="mini-section">
+                <h4>Perfil Firestore</h4>
+                <label class="wide-label">
+                  <span>UID do utilizador</span>
+                  <input id="userUid" type="text" placeholder="UID do Firebase Authentication" />
+                </label>
 
               <label class="wide-label">
                 <span>Nome</span>
@@ -277,6 +290,8 @@
                 <span>Role</span>
                 <select id="userRole">
                   <option value="user">user</option>
+                  <option value="gerente">gerente</option>
+                  <option value="viewer">viewer</option>
                   <option value="admin">admin</option>
                 </select>
               </label>
@@ -285,6 +300,8 @@
                 <span>Loja</span>
                 <select id="userStore"></select>
               </label>
+
+              </div>
 
               <div class="inline-actions">
                 <button class="primary-btn full" id="saveUserProfile" type="button">Guardar perfil</button>

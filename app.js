@@ -14,13 +14,13 @@ document.addEventListener("touchmove", function (event) {
   if (event.touches && event.touches.length > 1) event.preventDefault();
 }, { passive: false });
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
   getFirestore, collection, addDoc, deleteDoc, doc, setDoc, getDoc, getDocs,
   serverTimestamp, query, orderBy, onSnapshot, enableIndexedDbPersistence
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
-  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
+  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const noteValues = [500, 200, 100, 50, 20, 10, 5];
@@ -32,6 +32,8 @@ const storeProfiles = [
   { id: "loja_3", name: "Loja 3" },
   { id: "loja_4", name: "Loja 4" }
 ];
+
+const SUPER_ADMIN_EMAILS = ["admin-brinka@gmail.com", "pica.fern@gmail.com"];
 
 const state = {
   closures: [],
@@ -80,7 +82,19 @@ function hasValidFirebaseConfig() {
 }
 
 function isAdmin() {
-  return state.profile?.role === "admin";
+  return state.profile?.role === "admin" || SUPER_ADMIN_EMAILS.includes(state.user?.email || "");
+}
+
+function canManageUsers() {
+  return isAdmin();
+}
+
+function canDeleteFechos() {
+  return ["admin", "gerente"].includes(state.profile?.role) || isAdmin();
+}
+
+function canCreateFechos() {
+  return ["admin", "gerente", "user"].includes(state.profile?.role) || isAdmin();
 }
 
 function getActiveStoreId() {
@@ -184,6 +198,19 @@ async function readUserProfile(user) {
   const snap = await getDoc(ref);
 
   if (!snap.exists()) {
+    if (SUPER_ADMIN_EMAILS.includes(user.email || "")) {
+      const bootstrapProfile = {
+        nome: user.email,
+        email: user.email,
+        role: "admin",
+        lojaId: "loja_1",
+        bootstrap: true,
+        updatedAt: serverTimestamp()
+      };
+      await setDoc(ref, bootstrapProfile, { merge: true });
+      return bootstrapProfile;
+    }
+
     await signOut(state.auth);
     throw new Error("Este utilizador não tem perfil criado na coleção users.");
   }
@@ -321,6 +348,11 @@ async function saveClosure() {
     return;
   }
 
+  if (!canCreateFechos()) {
+    toast("Sem permissão para criar fechos");
+    return;
+  }
+
   const calc = calculate();
 
   if (calc.total <= 0) {
@@ -374,6 +406,7 @@ function clearForm(show = true) {
 
 async function deleteClosure(id) {
   if (!state.user) return;
+  if (!canDeleteFechos()) { toast("Sem permissão para apagar fechos"); return; }
 
   try {
     await deleteDoc(doc(state.db, "brinka_lojas", getActiveStoreId(), "fechos", id));
@@ -388,7 +421,7 @@ async function deleteClosure(id) {
 
 function renderAdminVisibility() {
   document.querySelectorAll(".admin-only").forEach(el => {
-    el.classList.toggle("hidden-admin", !isAdmin());
+    el.classList.toggle("hidden-admin", !canManageUsers());
   });
 }
 
@@ -407,7 +440,7 @@ function clearUserForm() {
 }
 
 async function loadUsers() {
-  if (!isAdmin() || !state.db) {
+  if (!canManageUsers() || !state.db) {
     if ($("usersList")) $("usersList").innerHTML = `<p class="muted">Só admin pode gerir utilizadores.</p>`;
     return;
   }
@@ -429,9 +462,14 @@ async function loadUsers() {
               </div>
               <span class="pill">${user.role || "user"}</span>
             </div>
-            <div class="muted">Loja: ${lojaName}</div>
+            <div class="user-chip-row">
+              <span class="user-chip">Loja: ${lojaName}</span>
+              <span class="user-chip role-${user.role || "user"}">Role: ${user.role || "user"}</span>
+              <span class="user-chip">${user.ativo === false ? "Bloqueado" : "Ativo"}</span>
+            </div>
             <div class="user-actions">
               <button class="mini-btn" data-edit-user="${user.uid}">Editar</button>
+              <button class="mini-btn" data-reset-user="${user.email || ""}">Reset password</button>
               <button class="mini-btn danger" data-delete-user="${user.uid}">Apagar perfil</button>
             </div>
           </div>
@@ -448,6 +486,20 @@ async function loadUsers() {
           $("userRole").value = user.role || "user";
           $("userStore").value = user.lojaId || "loja_1";
           toast("Perfil carregado para edição");
+        });
+      });
+
+      document.querySelectorAll("[data-reset-user]").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const email = btn.dataset.resetUser;
+          if (!email) { toast("Este perfil não tem email"); return; }
+          try {
+            await sendPasswordResetEmail(state.auth, email);
+            toast("Email de reset enviado");
+          } catch (error) {
+            console.error(error);
+            toast("Erro ao enviar reset");
+          }
         });
       });
 
@@ -471,8 +523,46 @@ async function loadUsers() {
   }
 }
 
+
+async function createAuthUserAndFillUid() {
+  if (!canManageUsers()) {
+    toast("Só admin pode criar logins");
+    return;
+  }
+
+  const email = $("newAuthEmail")?.value.trim();
+  const password = $("newAuthPassword")?.value;
+
+  if (!email || !password || password.length < 6) {
+    toast("Mete email e password com mínimo 6 caracteres");
+    return;
+  }
+
+  try {
+    const secondaryApp = initializeApp(window.BRINKA_FIREBASE_CONFIG, `secondary-${Date.now()}`);
+    const secondaryAuth = getAuth(secondaryApp);
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+
+    if ($("userUid")) $("userUid").value = cred.user.uid;
+    if ($("userEmail")) $("userEmail").value = email;
+    if ($("userName") && !$("userName").value) $("userName").value = email.split("@")[0];
+
+    await signOut(secondaryAuth);
+    await deleteApp(secondaryApp);
+
+    toast("Login criado. Agora guarda o perfil.");
+  } catch (error) {
+    console.error(error);
+    if (String(error.code || "").includes("email-already-in-use")) {
+      toast("Esse email já existe no Authentication");
+    } else {
+      toast("Erro ao criar login");
+    }
+  }
+}
+
 async function saveUserProfile() {
-  if (!isAdmin()) {
+  if (!canManageUsers()) {
     toast("Só admin pode guardar utilizadores");
     return;
   }
@@ -494,6 +584,7 @@ async function saveUserProfile() {
       email,
       role,
       lojaId,
+      ativo: true,
       updatedAt: serverTimestamp()
     }, { merge: true });
 
@@ -621,7 +712,7 @@ function renderAll() {
 }
 
 function switchPage(page) {
-  if (page === "users" && !isAdmin()) {
+  if (page === "users" && !canManageUsers()) {
     toast("Só admin pode abrir gestão de utilizadores");
     return;
   }
@@ -754,6 +845,7 @@ function bindEvents() {
   if ($("saveUserProfile")) $("saveUserProfile").addEventListener("click", saveUserProfile);
   if ($("clearUserForm")) $("clearUserForm").addEventListener("click", clearUserForm);
   if ($("refreshUsers")) $("refreshUsers").addEventListener("click", loadUsers);
+  if ($("createAuthUserBtn")) $("createAuthUserBtn").addEventListener("click", createAuthUserAndFillUid);
 
 
   if ($("store")) $("store").addEventListener("change", () => changeActiveStore($("store").value));
@@ -788,7 +880,7 @@ async function afterLogin(user) {
     showLogin(false);
     renderAll();
     await startStoreListener();
-    if (isAdmin()) await loadUsers();
+    if (canManageUsers()) await loadUsers();
     toast(`Bem-vindo, ${state.profile.nome || user.email}`);
   } catch (error) {
     console.error(error);
