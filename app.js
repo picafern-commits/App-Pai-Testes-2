@@ -30,7 +30,14 @@ import {
 const noteValues = [500, 200, 100, 50, 20, 10, 5];
 const coinValues = [2, 1, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01];
 
-const storeProfiles = [
+const defaultStoreProfiles = [
+  { id: "loja_1", name: "Loja 1" },
+  { id: "loja_2", name: "Loja 2" },
+  { id: "loja_3", name: "Loja 3" },
+  { id: "loja_4", name: "Loja 4" }
+];
+
+let storeProfiles = [
   { id: "loja_1", name: "Loja 1" },
   { id: "loja_2", name: "Loja 2" },
   { id: "loja_3", name: "Loja 3" },
@@ -118,11 +125,94 @@ function backupDocRef(key) {
   return doc(state.db, "brinka_lojas", getActiveStoreId(), "backups_diarios", key);
 }
 
+
+function lojasConfigDocRef() {
+  return doc(state.db, "brinka_config", "lojas");
+}
+
+function loadStoreNamesLocal() {
+  const saved = JSON.parse(localStorage.getItem("brinka_store_profiles") || "null");
+  if (Array.isArray(saved) && saved.length) {
+    storeProfiles = defaultStoreProfiles.map(def => {
+      const found = saved.find(s => s.id === def.id);
+      return found ? { ...def, name: found.name || def.name } : def;
+    });
+  }
+}
+
+function saveStoreNamesLocal() {
+  localStorage.setItem("brinka_store_profiles", JSON.stringify(storeProfiles));
+}
+
+async function loadStoreNamesRemote() {
+  if (!state.db || !state.user) return;
+  try {
+    const snap = await getDoc(lojasConfigDocRef());
+    if (snap.exists() && Array.isArray(snap.data().lojas)) {
+      const remote = snap.data().lojas;
+      storeProfiles = defaultStoreProfiles.map(def => {
+        const found = remote.find(s => s.id === def.id);
+        return found ? { ...def, name: found.name || def.name } : def;
+      });
+      saveStoreNamesLocal();
+      renderAll();
+    }
+  } catch (error) {
+    console.warn("Não foi possível carregar nomes das lojas:", error);
+  }
+}
+
+async function saveStoreNames() {
+  if (!isAdmin()) {
+    toast("Só admin pode editar nomes das lojas");
+    return;
+  }
+
+  storeProfiles = defaultStoreProfiles.map(store => ({
+    ...store,
+    name: $(`storeName_${store.id}`)?.value.trim() || store.name
+  }));
+
+  saveStoreNamesLocal();
+
+  try {
+    await setDoc(lojasConfigDocRef(), {
+      lojas: storeProfiles,
+      updatedAt: serverTimestamp(),
+      updatedBy: state.user?.email || ""
+    }, { merge: true });
+
+    state.settings.defaultStore = getActiveStoreName();
+    saveLocal();
+    populateStoreSelects();
+    populateUserStoreSelect();
+    renderAll();
+    toast("Nomes das lojas guardados");
+  } catch (error) {
+    console.error(error);
+    toast("Erro ao guardar nomes no Firebase");
+  }
+}
+
+function renderStoreNameInputs() {
+  defaultStoreProfiles.forEach(store => {
+    const input = $(`storeName_${store.id}`);
+    if (input) {
+      input.value = storeProfiles.find(s => s.id === store.id)?.name || store.name;
+      input.disabled = !isAdmin();
+    }
+  });
+
+  const panel = $("storeNamesPanel");
+  if (panel) panel.style.display = isAdmin() ? "" : "none";
+}
+
 function usersCollection() {
   return collection(state.db, "users");
 }
 
 function loadLocal() {
+  loadStoreNamesLocal();
   state.settings = {
     ...state.settings,
     ...JSON.parse(localStorage.getItem("brinka_roles_settings") || "{}")
@@ -721,6 +811,7 @@ function renderSettings() {
   if ($("defaultExpected")) $("defaultExpected").value = state.settings.defaultExpected || "";
   document.body.classList.toggle("light", state.settings.theme === "light");
   renderUserBadge();
+  renderStoreNameInputs();
 }
 
 function renderAll() {
@@ -861,6 +952,7 @@ function bindEvents() {
   if ($("search")) $("search").addEventListener("input", renderHistory);
   if ($("statusFilter")) $("statusFilter").addEventListener("change", renderHistory);
   if ($("saveSettings")) $("saveSettings").addEventListener("click", saveSettings);
+  if ($("saveStoreNames")) $("saveStoreNames").addEventListener("click", saveStoreNames);
   if ($("exportCsv")) $("exportCsv").addEventListener("click", exportCsv);
 
   if ($("saveUserProfile")) $("saveUserProfile").addEventListener("click", saveUserProfile);
@@ -903,6 +995,7 @@ async function afterLogin(user) {
     if ($("store")) $("store").value = getActiveStoreId();
 
     showLogin(false);
+    await loadStoreNamesRemote();
     renderAll();
     await startStoreListener();
     if (canManageUsers()) await loadUsers();

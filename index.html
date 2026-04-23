@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#5b0b68" />
   <title>Brinka Firebase — Fecho de Caixa</title>
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="./style.css?v=scrollfix-final" />
+  <link rel="stylesheet" href="./style.css?v=lojas-sidebar-final" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Brinka" />
@@ -236,6 +236,37 @@
               <button class="primary-btn full" id="saveSettings">Guardar configurações</button>
             </article>
 
+            
+            <article class="panel" id="storeNamesPanel">
+              <div class="panel-title">
+                <h3>Editar nomes das lojas</h3>
+                <span class="pill">Admin</span>
+              </div>
+
+              <label class="wide-label">
+                <span>Loja 1</span>
+                <input id="storeName_loja_1" type="text" placeholder="Nome da Loja 1" />
+              </label>
+
+              <label class="wide-label">
+                <span>Loja 2</span>
+                <input id="storeName_loja_2" type="text" placeholder="Nome da Loja 2" />
+              </label>
+
+              <label class="wide-label">
+                <span>Loja 3</span>
+                <input id="storeName_loja_3" type="text" placeholder="Nome da Loja 3" />
+              </label>
+
+              <label class="wide-label">
+                <span>Loja 4</span>
+                <input id="storeName_loja_4" type="text" placeholder="Nome da Loja 4" />
+              </label>
+
+              <button class="primary-btn full" id="saveStoreNames" type="button">Guardar nomes das lojas</button>
+            </article>
+
+
             <article class="panel">
               <div class="panel-title"><h3>Estado Firebase</h3></div>
               <p class="muted" id="firebaseInfo">A app tenta usar Firebase. Se não tiveres config válida, fica em modo local.</p>
@@ -328,6 +359,6 @@
   <div class="toast" id="toast"></div>
 
   <script src="./firebase-config.js?v=scrollfix-final"></script>
-  <script type="module" src="./app.js?v=scrollfix-final"></script>
+  <script type="module" src="./app.js?v=lojas-sidebar-final"></script>
 </body>
 </html>

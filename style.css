@@ -384,3 +384,43 @@ body {
     overflow-x: hidden !important;
   }
 }
+
+
+/* Sidebar infinita + gestão de nomes de lojas */
+.app-layout {
+  align-items: stretch !important;
+}
+
+.sidebar {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  bottom: 0 !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+  overflow-y: auto !important;
+}
+
+.main-area {
+  margin-left: 300px !important;
+  min-height: 100vh !important;
+}
+
+@media (max-width: 850px) {
+  .sidebar {
+    transform: translateX(-105%);
+    width: min(310px, 88vw) !important;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .main-area {
+    margin-left: 0 !important;
+  }
+}
+
+#storeNamesPanel {
+  grid-column: 1 / -1;
+}
