@@ -198,3 +198,56 @@ button,
     font-size: 30px;
   }
 }
+
+
+/* Gestão de Utilizadores */
+.admin-only.hidden-admin {
+  display: none !important;
+}
+
+.user-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255,255,255,.065);
+}
+
+.user-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.user-card strong {
+  font-size: 18px;
+}
+
+.user-card small {
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.user-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mini-btn {
+  min-height: 36px;
+  border-radius: 12px;
+  padding: 0 10px;
+  color: var(--text);
+  background: rgba(255,255,255,.085);
+  border: 1px solid var(--line);
+  font-weight: 950;
+}
+
+.mini-btn.danger {
+  color: #ffd0d7;
+  background: rgba(255,92,114,.14);
+  border-color: rgba(255,92,114,.26);
+}

@@ -64,6 +64,7 @@
         <button class="nav-item" data-page="historico"><span>🧾</span><b>Histórico</b></button>
         <button class="nav-item" data-page="relatorios"><span>📈</span><b>Relatórios</b></button>
         <button class="nav-item" data-page="config"><span>⚙️</span><b>Configurações</b></button>
+        <button class="nav-item admin-only" data-page="users"><span>👥</span><b>Utilizadores</b></button>
       </nav>
 
       <div class="side-status">
@@ -244,6 +245,64 @@
             </article>
           </div>
         </section>
+
+        <section class="page" id="page-users">
+          <div class="panel-grid">
+            <article class="panel">
+              <div class="panel-title">
+                <h3>Criar / editar perfil</h3>
+                <span class="pill">Só Admin</span>
+              </div>
+
+              <p class="muted">
+                Primeiro cria o utilizador no Firebase Authentication. Depois cola aqui o UID e cria o perfil.
+              </p>
+
+              <label class="wide-label">
+                <span>UID do utilizador</span>
+                <input id="userUid" type="text" placeholder="UID do Firebase Authentication" />
+              </label>
+
+              <label class="wide-label">
+                <span>Nome</span>
+                <input id="userName" type="text" placeholder="Nome do utilizador" />
+              </label>
+
+              <label class="wide-label">
+                <span>Email</span>
+                <input id="userEmail" type="email" placeholder="email@loja.com" />
+              </label>
+
+              <label class="wide-label">
+                <span>Role</span>
+                <select id="userRole">
+                  <option value="user">user</option>
+                  <option value="admin">admin</option>
+                </select>
+              </label>
+
+              <label class="wide-label">
+                <span>Loja</span>
+                <select id="userStore"></select>
+              </label>
+
+              <div class="inline-actions">
+                <button class="primary-btn full" id="saveUserProfile" type="button">Guardar perfil</button>
+                <button class="soft-btn full" id="clearUserForm" type="button">Limpar</button>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-title">
+                <h3>Utilizadores</h3>
+                <button class="soft-btn" id="refreshUsers" type="button">Atualizar</button>
+              </div>
+
+              <div id="usersList" class="cards-list"></div>
+            </article>
+          </div>
+        </section>
+
       </main>
     </section>
   </div>

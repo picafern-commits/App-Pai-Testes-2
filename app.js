@@ -16,7 +16,7 @@ document.addEventListener("touchmove", function (event) {
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
-  getFirestore, collection, addDoc, deleteDoc, doc, setDoc, getDoc,
+  getFirestore, collection, addDoc, deleteDoc, doc, setDoc, getDoc, getDocs,
   serverTimestamp, query, orderBy, onSnapshot, enableIndexedDbPersistence
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
@@ -98,6 +98,10 @@ function fechosCollection(db = state.db) {
 
 function backupDocRef(key) {
   return doc(state.db, "brinka_lojas", getActiveStoreId(), "backups_diarios", key);
+}
+
+function usersCollection() {
+  return collection(state.db, "users");
 }
 
 function loadLocal() {
@@ -381,6 +385,127 @@ async function deleteClosure(id) {
   }
 }
 
+
+function renderAdminVisibility() {
+  document.querySelectorAll(".admin-only").forEach(el => {
+    el.classList.toggle("hidden-admin", !isAdmin());
+  });
+}
+
+function populateUserStoreSelect() {
+  const select = $("userStore");
+  if (!select) return;
+  select.innerHTML = storeProfiles.map(store => `<option value="${store.id}">${store.name}</option>`).join("");
+}
+
+function clearUserForm() {
+  if ($("userUid")) $("userUid").value = "";
+  if ($("userName")) $("userName").value = "";
+  if ($("userEmail")) $("userEmail").value = "";
+  if ($("userRole")) $("userRole").value = "user";
+  if ($("userStore")) $("userStore").value = "loja_1";
+}
+
+async function loadUsers() {
+  if (!isAdmin() || !state.db) {
+    if ($("usersList")) $("usersList").innerHTML = `<p class="muted">Só admin pode gerir utilizadores.</p>`;
+    return;
+  }
+
+  try {
+    const snap = await getDocs(usersCollection());
+    const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+
+    if ($("usersList")) {
+      $("usersList").innerHTML = users.map(user => {
+        const lojaName = storeProfiles.find(s => s.id === user.lojaId)?.name || user.lojaId || "—";
+        return `
+          <div class="user-card">
+            <div class="user-card-top">
+              <div>
+                <strong>${user.nome || "Sem nome"}</strong><br>
+                <small>${user.email || "Sem email"}</small><br>
+                <small>UID: ${user.uid}</small>
+              </div>
+              <span class="pill">${user.role || "user"}</span>
+            </div>
+            <div class="muted">Loja: ${lojaName}</div>
+            <div class="user-actions">
+              <button class="mini-btn" data-edit-user="${user.uid}">Editar</button>
+              <button class="mini-btn danger" data-delete-user="${user.uid}">Apagar perfil</button>
+            </div>
+          </div>
+        `;
+      }).join("") || `<p class="muted">Ainda não existem perfis.</p>`;
+
+      document.querySelectorAll("[data-edit-user]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const user = users.find(u => u.uid === btn.dataset.editUser);
+          if (!user) return;
+          $("userUid").value = user.uid || "";
+          $("userName").value = user.nome || "";
+          $("userEmail").value = user.email || "";
+          $("userRole").value = user.role || "user";
+          $("userStore").value = user.lojaId || "loja_1";
+          toast("Perfil carregado para edição");
+        });
+      });
+
+      document.querySelectorAll("[data-delete-user]").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          if (!confirm("Apagar este perfil? O login no Authentication continua a existir.")) return;
+          try {
+            await deleteDoc(doc(state.db, "users", btn.dataset.deleteUser));
+            toast("Perfil apagado");
+            await loadUsers();
+          } catch (error) {
+            console.error(error);
+            toast("Erro ao apagar perfil");
+          }
+        });
+      });
+    }
+  } catch (error) {
+    console.error(error);
+    if ($("usersList")) $("usersList").innerHTML = `<p class="muted">Erro ao carregar utilizadores. Verifica regras Firebase.</p>`;
+  }
+}
+
+async function saveUserProfile() {
+  if (!isAdmin()) {
+    toast("Só admin pode guardar utilizadores");
+    return;
+  }
+
+  const uid = $("userUid")?.value.trim();
+  const nome = $("userName")?.value.trim();
+  const email = $("userEmail")?.value.trim();
+  const role = $("userRole")?.value || "user";
+  const lojaId = $("userStore")?.value || "loja_1";
+
+  if (!uid || !nome || !email) {
+    toast("Preenche UID, nome e email");
+    return;
+  }
+
+  try {
+    await setDoc(doc(state.db, "users", uid), {
+      nome,
+      email,
+      role,
+      lojaId,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    toast("Perfil guardado");
+    clearUserForm();
+    await loadUsers();
+  } catch (error) {
+    console.error(error);
+    toast("Erro ao guardar perfil");
+  }
+}
+
 function renderDashboard() {
   const today = new Date().toLocaleDateString("pt-PT");
   const todayItems = state.closures.filter(item => item.dateIso && new Date(item.dateIso).toLocaleDateString("pt-PT") === today);
@@ -491,9 +616,15 @@ function renderAll() {
   renderHistory();
   renderReports();
   renderSettings();
+  renderAdminVisibility();
+  populateUserStoreSelect();
 }
 
 function switchPage(page) {
+  if (page === "users" && !isAdmin()) {
+    toast("Só admin pode abrir gestão de utilizadores");
+    return;
+  }
   document.querySelectorAll(".page").forEach(el => el.classList.remove("active"));
   if ($(`page-${page}`)) $(`page-${page}`).classList.add("active");
   document.querySelectorAll(".nav-item").forEach(button => button.classList.toggle("active", button.dataset.page === page));
@@ -503,7 +634,8 @@ function switchPage(page) {
     fecho: ["Fecho de Caixa", "Novo Fecho"],
     historico: ["Histórico", "Registos Guardados"],
     relatorios: ["Relatórios", "Análise de Fechos"],
-    config: ["Configurações", "Preferências"]
+    config: ["Configurações", "Preferências"],
+    users: ["Utilizadores", "Gestão de Acessos"]
   };
 
   if ($("pageKicker")) $("pageKicker").textContent = titles[page]?.[0] || "Brinka";
@@ -619,6 +751,11 @@ function bindEvents() {
   if ($("saveSettings")) $("saveSettings").addEventListener("click", saveSettings);
   if ($("exportCsv")) $("exportCsv").addEventListener("click", exportCsv);
 
+  if ($("saveUserProfile")) $("saveUserProfile").addEventListener("click", saveUserProfile);
+  if ($("clearUserForm")) $("clearUserForm").addEventListener("click", clearUserForm);
+  if ($("refreshUsers")) $("refreshUsers").addEventListener("click", loadUsers);
+
+
   if ($("store")) $("store").addEventListener("change", () => changeActiveStore($("store").value));
   if ($("activeStore")) $("activeStore").addEventListener("change", () => changeActiveStore($("activeStore").value));
 
@@ -651,6 +788,7 @@ async function afterLogin(user) {
     showLogin(false);
     renderAll();
     await startStoreListener();
+    if (isAdmin()) await loadUsers();
     toast(`Bem-vindo, ${state.profile.nome || user.email}`);
   } catch (error) {
     console.error(error);
