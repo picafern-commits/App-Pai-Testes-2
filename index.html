@@ -3,147 +3,256 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#020617" />
+  <meta name="theme-color" content="#5b0b68" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Brinka" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Brinka — Fecho de Caixa</title>
+  <title>Brinka Web — Fecho de Caixa</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div>
-        <p class="eyebrow">Fecho de Caixa</p>
-        <h1>Brinka</h1>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <img src="assets/brinka-logo.png" alt="Brinka" onerror="this.style.display='none'" />
+        <div>
+          <strong>Brinka</strong>
+          <span>Fecho de Caixa</span>
+        </div>
       </div>
-      <button class="icon-btn" id="themeBtn" type="button" aria-label="Alternar tema">☾</button>
-    </header>
 
-    <main>
-      <section class="page active" id="page-dashboard">
-        <div class="hero-card">
-          <div>
-            <p class="eyebrow">Hoje</p>
-            <h2 id="dashTodayTotal">0,00 €</h2>
-            <p id="dashTodayStatus">Sem fechos registados hoje</p>
-          </div>
-          <div class="hero-badge" id="dashDiff">0,00 €</div>
+      <nav class="side-nav">
+        <button class="nav-btn active" data-page="dashboard">Dashboard</button>
+        <button class="nav-btn" data-page="fecho">Fecho de Caixa</button>
+        <button class="nav-btn" data-page="historico">Histórico</button>
+        <button class="nav-btn" data-page="relatorios">Relatórios</button>
+        <button class="nav-btn" data-page="config">Configurações</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span id="storageStatus">Modo local</span>
+        <small>Brinka Web v1.0</small>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <button class="menu-btn" id="menuBtn">☰</button>
+        <div>
+          <p class="eyebrow" id="pageKicker">Dashboard</p>
+          <h1 id="pageTitle">Resumo da Caixa</h1>
         </div>
+        <div class="top-actions">
+          <button class="ghost" id="themeBtn">Tema</button>
+          <button class="primary small" data-page="fecho">Novo fecho</button>
+        </div>
+      </header>
 
-        <div class="grid-2">
-          <article class="stat-card">
-            <span>Total fechos</span>
-            <strong id="dashCount">0</strong>
+      <main>
+        <section class="page active" id="page-dashboard">
+          <div class="dashboard-grid">
+            <article class="hero-card">
+              <p class="eyebrow">Total contado hoje</p>
+              <h2 id="todayTotal">0,00 €</h2>
+              <span id="todaySubtitle">Sem fechos hoje</span>
+            </article>
+            <article class="metric-card">
+              <span>Diferença hoje</span>
+              <strong id="todayDiff">0,00 €</strong>
+            </article>
+            <article class="metric-card">
+              <span>Total de fechos</span>
+              <strong id="totalClosures">0</strong>
+            </article>
+            <article class="metric-card">
+              <span>Último fecho</span>
+              <strong id="lastClosure">—</strong>
+            </article>
+          </div>
+
+          <div class="two-col">
+            <article class="panel">
+              <div class="panel-head">
+                <h3>Fechos recentes</h3>
+                <button class="link-btn" data-page="historico">Ver histórico</button>
+              </div>
+              <div id="recentClosures" class="list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <h3>Resumo empresa</h3>
+              </div>
+              <div class="summary-list">
+                <div><span>Melhor fecho</span><strong id="bestClosure">0,00 €</strong></div>
+                <div><span>Total acumulado</span><strong id="allTimeTotal">0,00 €</strong></div>
+                <div><span>Média por fecho</span><strong id="avgClosure">0,00 €</strong></div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="page" id="page-fecho">
+          <div class="checkout-layout">
+            <section class="checkout-left">
+              <article class="panel">
+                <div class="panel-head">
+                  <h3>Dados do fecho</h3>
+                  <span class="badge" id="diffBadge">Sem esperado</span>
+                </div>
+
+                <div class="form-grid">
+                  <label>
+                    <span>Utilizador</span>
+                    <input id="operator" type="text" placeholder="Ex: Ricardo" />
+                  </label>
+                  <label>
+                    <span>Loja / Balcão</span>
+                    <input id="store" type="text" placeholder="Ex: Brinka Braga" />
+                  </label>
+                  <label>
+                    <span>Valor esperado</span>
+                    <input id="expected" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00" />
+                  </label>
+                  <label>
+                    <span>Data</span>
+                    <input id="closeDate" type="datetime-local" />
+                  </label>
+                </div>
+
+                <label class="full-label">
+                  <span>Observações</span>
+                  <textarea id="obs" rows="3" placeholder="Notas internas do fecho..."></textarea>
+                </label>
+              </article>
+
+              <div class="money-columns">
+                <article class="panel">
+                  <div class="panel-head">
+                    <h3>Notas</h3>
+                    <strong id="notesTotal">0,00 €</strong>
+                  </div>
+                  <div id="notesRows" class="money-list"></div>
+                </article>
+
+                <article class="panel">
+                  <div class="panel-head">
+                    <h3>Moedas</h3>
+                    <strong id="coinsTotal">0,00 €</strong>
+                  </div>
+                  <div id="coinsRows" class="money-list"></div>
+                </article>
+              </div>
+            </section>
+
+            <aside class="checkout-summary">
+              <article class="total-card">
+                <p class="eyebrow">Total contado</p>
+                <h2 id="grandTotal">0,00 €</h2>
+                <div class="mini-line"><span>Notas</span><strong id="sumNotes">0,00 €</strong></div>
+                <div class="mini-line"><span>Moedas</span><strong id="sumCoins">0,00 €</strong></div>
+                <div class="mini-line"><span>Esperado</span><strong id="sumExpected">0,00 €</strong></div>
+                <div class="mini-line strong"><span>Diferença</span><strong id="sumDiff">0,00 €</strong></div>
+                <button class="primary full" id="saveClosure">Guardar fecho</button>
+                <button class="ghost full" id="clearForm">Limpar formulário</button>
+              </article>
+            </aside>
+          </div>
+        </section>
+
+        <section class="page" id="page-historico">
+          <article class="panel">
+            <div class="panel-head">
+              <h3>Histórico de fechos</h3>
+              <div class="history-actions">
+                <button class="ghost" id="exportCsv">Exportar CSV</button>
+                <button class="danger" id="clearHistory">Limpar local</button>
+              </div>
+            </div>
+
+            <div class="filters">
+              <input id="search" type="search" placeholder="Pesquisar por data, loja, utilizador..." />
+              <select id="statusFilter">
+                <option value="">Todos</option>
+                <option value="certo">Certo</option>
+                <option value="sobra">Sobra</option>
+                <option value="falta">Falta</option>
+              </select>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Loja</th>
+                    <th>Utilizador</th>
+                    <th>Total</th>
+                    <th>Esperado</th>
+                    <th>Diferença</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="historyTable"></tbody>
+              </table>
+            </div>
           </article>
-          <article class="stat-card">
-            <span>Último fecho</span>
-            <strong id="dashLast">—</strong>
+        </section>
+
+        <section class="page" id="page-relatorios">
+          <div class="dashboard-grid">
+            <article class="metric-card">
+              <span>Total geral</span>
+              <strong id="reportTotal">0,00 €</strong>
+            </article>
+            <article class="metric-card">
+              <span>Total diferenças</span>
+              <strong id="reportDiff">0,00 €</strong>
+            </article>
+            <article class="metric-card">
+              <span>Fechos com falta</span>
+              <strong id="reportMissing">0</strong>
+            </article>
+            <article class="metric-card">
+              <span>Fechos com sobra</span>
+              <strong id="reportOver">0</strong>
+            </article>
+          </div>
+
+          <article class="panel">
+            <h3>Últimos movimentos</h3>
+            <div id="reportList" class="list"></div>
           </article>
-        </div>
+        </section>
 
-        <article class="panel">
-          <div class="panel-head">
-            <h3>Resumo rápido</h3>
-            <button class="small-btn" data-nav="fecho">Novo fecho</button>
+        <section class="page" id="page-config">
+          <div class="two-col">
+            <article class="panel">
+              <h3>Configurações gerais</h3>
+              <label class="full-label">
+                <span>Nome da loja por defeito</span>
+                <input id="defaultStore" type="text" placeholder="Ex: Brinka Braga" />
+              </label>
+              <label class="full-label">
+                <span>Valor esperado por defeito</span>
+                <input id="defaultExpected" type="number" step="0.01" min="0" placeholder="0.00" />
+              </label>
+              <button class="primary full" id="saveSettings">Guardar configurações</button>
+            </article>
+
+            <article class="panel">
+              <h3>Firebase opcional</h3>
+              <p class="muted">
+                A app já funciona offline/local. Para sincronizar entre PC e iPhone,
+                coloca os teus dados no ficheiro <b>firebase-config.js</b> e muda
+                <b>BRINKA_FIREBASE_ENABLED</b> para <b>true</b>.
+              </p>
+              <div class="code-box">Coleção Firestore: brinka_fechos</div>
+            </article>
           </div>
-          <div id="latestList" class="latest-list"></div>
-        </article>
-      </section>
-
-      <section class="page" id="page-fecho">
-        <article class="panel sticky-total">
-          <div>
-            <p class="eyebrow">Total contado</p>
-            <h2 id="grandTotal">0,00 €</h2>
-          </div>
-          <div class="diff-pill" id="diffPill">Certo</div>
-        </article>
-
-        <article class="panel">
-          <h3>Dados do fecho</h3>
-          <label class="field">
-            <span>Utilizador</span>
-            <input id="operatorName" type="text" placeholder="Ex: Ricardo" />
-          </label>
-          <label class="field">
-            <span>Valor esperado</span>
-            <input id="expectedValue" type="number" step="0.01" min="0" placeholder="0.00" inputmode="decimal" />
-          </label>
-          <label class="field">
-            <span>Observações</span>
-            <textarea id="notes" rows="3" placeholder="Ex: faltou talão, sobra em moedas..."></textarea>
-          </label>
-        </article>
-
-        <article class="panel">
-          <div class="panel-head">
-            <h3>Notas</h3>
-            <strong id="notesTotal">0,00 €</strong>
-          </div>
-          <div id="notesRows" class="money-list"></div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-head">
-            <h3>Moedas</h3>
-            <strong id="coinsTotal">0,00 €</strong>
-          </div>
-          <div id="coinsRows" class="money-list"></div>
-        </article>
-
-        <div class="actions">
-          <button class="secondary" id="clearBtn" type="button">Limpar</button>
-          <button class="primary" id="saveBtn" type="button">Guardar fecho</button>
-        </div>
-      </section>
-
-      <section class="page" id="page-historico">
-        <article class="panel">
-          <div class="panel-head">
-            <h3>Histórico</h3>
-            <button class="small-btn danger" id="deleteAllBtn" type="button">Limpar tudo</button>
-          </div>
-          <label class="field compact">
-            <span>Pesquisar por data / utilizador</span>
-            <input id="searchHistory" type="search" placeholder="Ex: Ricardo ou 23/04/2026" />
-          </label>
-          <div id="historyList" class="history-list"></div>
-        </article>
-      </section>
-
-      <section class="page" id="page-config">
-        <article class="panel">
-          <h3>Configurações</h3>
-          <label class="field">
-            <span>Nome da loja</span>
-            <input id="storeName" type="text" placeholder="Ex: Loja Braga" />
-          </label>
-          <label class="field">
-            <span>Valor esperado por defeito</span>
-            <input id="defaultExpected" type="number" step="0.01" min="0" placeholder="0.00" inputmode="decimal" />
-          </label>
-          <button class="primary full" id="saveSettingsBtn" type="button">Guardar configurações</button>
-        </article>
-
-        <article class="panel">
-          <h3>Firebase</h3>
-          <p class="muted">
-            Esta versão funciona já em modo local. Para sincronizar entre iPhone/PC, abre o ficheiro
-            <b>firebase-config.js</b> e mete os dados do teu Firebase.
-          </p>
-          <p class="muted" id="firebaseState">Estado: localStorage</p>
-        </article>
-      </section>
-    </main>
-
-    <nav class="bottom-nav">
-      <button class="nav-btn active" data-nav="dashboard">Dashboard</button>
-      <button class="nav-btn" data-nav="fecho">Fecho</button>
-      <button class="nav-btn" data-nav="historico">Histórico</button>
-      <button class="nav-btn" data-nav="config">Config</button>
-    </nav>
+        </section>
+      </main>
+    </section>
   </div>
 
   <div class="toast" id="toast"></div>

@@ -1,10 +1,16 @@
 {
-  "name": "Brinka - Fecho de Caixa",
+  "name": "Brinka Web - Fecho de Caixa",
   "short_name": "Brinka",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#020617",
-  "theme_color": "#020617",
-  "orientation": "portrait",
-  "icons": []
+  "background_color": "#140018",
+  "theme_color": "#5b0b68",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "assets/brinka-logo.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ]
 }

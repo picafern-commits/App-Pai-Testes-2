@@ -1,32 +1,36 @@
-# Brinka PRO
+# Brinka Web PC + iPhone
 
-App de fecho de caixa para iPhone via GitHub Pages.
+Versão profissional para usar no PC via web e também no iPhone pelo Safari.
 
-## Ficheiros
-- `index.html`
-- `style.css`
-- `app.js`
-- `firebase-config.js`
-- `manifest.json`
+## O que inclui
+- Dashboard profissional
+- Fecho de caixa com notas e moedas
+- Valor esperado vs contado
+- Histórico com pesquisa e filtros
+- Relatórios
+- Exportar CSV
+- Configurações
+- Logo incluído
+- Firebase opcional
+- GitHub Pages ready
 
-## Como usar
-1. Envia estes ficheiros para um repositório GitHub.
-2. Vai a Settings > Pages.
-3. Escolhe a branch `main` e a pasta `/root`.
-4. Abre o link no Safari do iPhone.
-5. Carrega em Partilhar > Adicionar ao ecrã principal.
+## Como publicar no GitHub Pages
+1. Cria um repositório no GitHub.
+2. Envia todos estes ficheiros para a raiz do repositório.
+3. Vai a Settings > Pages.
+4. Em Source escolhe `Deploy from a branch`.
+5. Escolhe branch `main` e pasta `/root`.
+6. Guarda.
+7. Abre o link no PC ou Safari do iPhone.
 
 ## Firebase
-A app funciona logo em modo localStorage.
-Para sincronizar entre dispositivos:
-1. Cria um projeto Firebase.
-2. Ativa Firestore Database.
-3. Copia a configuração web para `firebase-config.js`.
-4. Muda `window.BRINKA_FIREBASE_ENABLED = true;`.
+A app funciona sem Firebase em modo local.
+Para sincronizar PC/iPhone:
+- abre `firebase-config.js`
+- cola a configuração do Firebase
+- muda `window.BRINKA_FIREBASE_ENABLED = true;`
 
-## Regras Firestore temporárias para testes
-Usa só para testar:
-
+## Regras temporárias para testar Firestore
 ```
 rules_version = '2';
 service cloud.firestore {
