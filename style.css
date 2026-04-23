@@ -537,16 +537,45 @@ body {
   display: none !important;
 }
 
-/* Ajuste layout Fecho de Caixa */
-.checkout-grid {
-  display: flex !important;
-  flex-direction: column !important;
+
+/* Fecho de Caixa: manter layout original, só meter Dados do Fecho no fim */
+@media (min-width: 851px) {
+  .checkout-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 380px !important;
+    gap: 16px !important;
+    align-items: start !important;
+  }
+
+  .checkout-main {
+    display: grid !important;
+    gap: 16px !important;
+  }
+
+  #page-fecho .checkout-main > .panel:first-child {
+    order: 2 !important;
+  }
+
+  #page-fecho .money-grid {
+    order: 1 !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 16px !important;
+  }
+
+  #page-fecho .total-panel {
+    order: initial !important;
+    position: sticky !important;
+    top: 24px !important;
+  }
 }
 
-.checkout-main {
-  order: 2 !important;
-}
+@media (max-width: 850px) {
+  #page-fecho .checkout-main > .panel:first-child {
+    order: 2 !important;
+  }
 
-.money-grid {
-  order: 1 !important;
+  #page-fecho .money-grid {
+    order: 1 !important;
+  }
 }
