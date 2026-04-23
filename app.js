@@ -515,8 +515,16 @@ async function deleteClosure(id) {
 
 function renderAdminVisibility() {
   document.querySelectorAll(".admin-only").forEach(el => {
-    el.classList.toggle("hidden-admin", !canManageUsers());
+    el.classList.toggle("hidden-admin", !isAdmin());
   });
+
+  document.querySelectorAll(".admin-page").forEach(el => {
+    el.classList.toggle("hidden-admin", !isAdmin());
+  });
+
+  if (!isAdmin() && document.querySelector("#page-config.active")) {
+    switchPage("dashboard");
+  }
 }
 
 function populateUserStoreSelect() {

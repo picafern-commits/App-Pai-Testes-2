@@ -529,3 +529,24 @@ body {
     width: 100% !important;
   }
 }
+
+
+/* Configurações só admin - hard lock visual */
+.admin-only.hidden-admin,
+.admin-page.hidden-admin {
+  display: none !important;
+}
+
+/* Ajuste layout Fecho de Caixa */
+.checkout-grid {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.checkout-main {
+  order: 2 !important;
+}
+
+.money-grid {
+  order: 1 !important;
+}
