@@ -1,3 +1,33 @@
+
+/* iPhone app total: bloquear zoom/double tap e manter só scroll vertical */
+let brinkaLastTouchEnd = 0;
+
+document.addEventListener("touchend", function (event) {
+  const now = Date.now();
+  if (now - brinkaLastTouchEnd <= 300) {
+    event.preventDefault();
+  }
+  brinkaLastTouchEnd = now;
+}, { passive: false });
+
+document.addEventListener("gesturestart", function (event) {
+  event.preventDefault();
+}, { passive: false });
+
+document.addEventListener("gesturechange", function (event) {
+  event.preventDefault();
+}, { passive: false });
+
+document.addEventListener("gestureend", function (event) {
+  event.preventDefault();
+}, { passive: false });
+
+document.addEventListener("touchmove", function (event) {
+  if (event.touches && event.touches.length > 1) {
+    event.preventDefault();
+  }
+}, { passive: false });
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
   getFirestore, collection, addDoc, deleteDoc, doc, setDoc,

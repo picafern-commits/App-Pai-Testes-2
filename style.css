@@ -31,3 +31,66 @@ body.light .sidebar{background:rgba(255,255,255,.68)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;z-index:100;color:white;background:#26002d;border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:13px 18px;font-weight:950;box-shadow:var(--shadow);transition:.2s ease}.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}.overlay{display:none}
 @media(max-width:1180px){.hero-grid{grid-template-columns:1fr 1fr}.checkout-grid{grid-template-columns:1fr}.total-panel{position:static}.form-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:850px){.app-layout{grid-template-columns:1fr}.sidebar{position:fixed;transform:translateX(-105%);transition:.2s ease;width:min(310px,88vw)}.sidebar.open{transform:translateX(0)}.overlay.show{display:block;position:fixed;inset:0;z-index:25;background:rgba(0,0,0,.45)}.main-area{padding:18px 14px 90px}.menu-btn{display:grid;place-items:center}.top-actions{display:none}h1{font-size:31px}h2{font-size:38px}.hero-grid,.hero-grid.small,.panel-grid,.money-grid,.form-grid,.filters{grid-template-columns:1fr}.hero-card,.metric-card{min-height:auto}.money-row{grid-template-columns:70px 1fr 96px}}
+
+
+/* iPhone app total: sem zoom, sem scroll lateral, fullscreen safe-area */
+html {
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden !important;
+  touch-action: pan-y !important;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden !important;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y !important;
+  -webkit-user-select: none;
+  user-select: none;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+input,
+textarea,
+select {
+  -webkit-user-select: text;
+  user-select: text;
+  font-size: 16px !important; /* evita zoom automático do iOS ao tocar nos inputs */
+}
+
+button,
+.nav-item,
+.primary-btn,
+.soft-btn,
+.danger-btn {
+  touch-action: manipulation;
+}
+
+.app-layout,
+.main-area,
+.content,
+.page {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+@media (max-width: 850px) {
+  .main-area {
+    padding-top: calc(14px + env(safe-area-inset-top));
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
+  }
+
+  .sidebar {
+    padding-top: calc(18px + env(safe-area-inset-top));
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  }
+
+  .toast {
+    bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+}
