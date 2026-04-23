@@ -291,3 +291,41 @@ button,
   font-weight: 900;
   font-size: 12px;
 }
+
+
+/* FIX PC + iPhone: PC com scroll normal, iPhone sem zoom lateral */
+html,
+body {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: auto !important;
+}
+
+body {
+  position: static !important;
+}
+
+.main-area,
+.content {
+  overflow: visible !important;
+}
+
+@media (min-width: 901px) {
+  html,
+  body {
+    touch-action: auto !important;
+    overscroll-behavior-y: auto !important;
+  }
+
+  .app-layout {
+    min-height: 100vh;
+  }
+}
+
+@media (max-width: 900px) {
+  html,
+  body {
+    touch-action: pan-y !important;
+    overflow-x: hidden !important;
+  }
+}

@@ -1,3 +1,4 @@
+console.log("[Brinka] app.js carregado - fix scroll/login");
 /* iPhone app total: bloquear zoom/double tap e manter só scroll vertical */
 let brinkaLastTouchEnd = 0;
 
@@ -525,6 +526,8 @@ async function loadUsers() {
 
 
 async function createAuthUserAndFillUid() {
+  console.log("[Brinka] Criar login clicado");
+
   if (!canManageUsers()) {
     toast("Só admin pode criar logins");
     return;
@@ -538,12 +541,17 @@ async function createAuthUserAndFillUid() {
     return;
   }
 
-  try {
-    const secondaryApp = initializeApp(window.BRINKA_FIREBASE_CONFIG, `secondary-${Date.now()}`);
-    const secondaryAuth = getAuth(secondaryApp);
-    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+  let secondaryApp = null;
 
-    if ($("userUid")) $("userUid").value = cred.user.uid;
+  try {
+    const appName = `brinka-secondary-${Date.now()}`;
+    secondaryApp = initializeApp(window.BRINKA_FIREBASE_CONFIG, appName);
+    const secondaryAuth = getAuth(secondaryApp);
+
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    const uid = cred.user.uid;
+
+    if ($("userUid")) $("userUid").value = uid;
     if ($("userEmail")) $("userEmail").value = email;
     if ($("userName") && !$("userName").value) $("userName").value = email.split("@")[0];
 
@@ -551,12 +559,22 @@ async function createAuthUserAndFillUid() {
     await deleteApp(secondaryApp);
 
     toast("Login criado. Agora guarda o perfil.");
+    console.log("[Brinka] Login criado:", uid);
   } catch (error) {
-    console.error(error);
-    if (String(error.code || "").includes("email-already-in-use")) {
-      toast("Esse email já existe no Authentication");
+    console.error("[Brinka] Erro ao criar login:", error);
+
+    try {
+      if (secondaryApp) await deleteApp(secondaryApp);
+    } catch {}
+
+    if (error.code === "auth/email-already-in-use") {
+      toast("Email já existe no Authentication");
+    } else if (error.code === "auth/weak-password") {
+      toast("Password fraca: mínimo 6 caracteres");
+    } else if (error.code === "auth/operation-not-allowed") {
+      toast("Ativa Email/Password no Firebase Auth");
     } else {
-      toast("Erro ao criar login");
+      toast("Erro ao criar login: vê a consola");
     }
   }
 }
@@ -845,6 +863,10 @@ function bindEvents() {
   if ($("saveUserProfile")) $("saveUserProfile").addEventListener("click", saveUserProfile);
   if ($("clearUserForm")) $("clearUserForm").addEventListener("click", clearUserForm);
   if ($("refreshUsers")) $("refreshUsers").addEventListener("click", loadUsers);
+  const createAuthUserBtn = $("createAuthUserBtn");
+  if (createAuthUserBtn) {
+    createAuthUserBtn.addEventListener("click", createAuthUserAndFillUid);
+  }
   if ($("createAuthUserBtn")) $("createAuthUserBtn").addEventListener("click", createAuthUserAndFillUid);
 
 
@@ -916,3 +938,13 @@ async function init() {
 }
 
 init();
+
+
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest?.("#createAuthUserBtn");
+  if (btn) {
+    event.preventDefault();
+    createAuthUserAndFillUid();
+  }
+});
+
