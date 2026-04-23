@@ -1,11 +1,3 @@
-/*
-  BRINKA — FIREBASE MULTI-DISPOSITIVO + BACKUPS DIÁRIOS
-
-  Firestore usado:
-  - brinka_fechos
-  - brinka_backups_diarios
-*/
-
 window.BRINKA_FIREBASE_ENABLED = true;
 
 window.BRINKA_FIREBASE_CONFIG = {
