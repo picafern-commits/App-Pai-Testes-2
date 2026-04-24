@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#5b0b68" />
   <title>Desktop - Brinka Firebase — Fecho de Caixa</title>
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="./style.css?v=reconstruido-limpo" />
+  <link rel="stylesheet" href="./style.css?v=memorizar-email-sem-auto" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Brinka" />
@@ -38,6 +38,12 @@
         <label class="wide-label">
           <span>Password</span>
           <input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password" />
+        </label>
+
+        
+        <label class="remember-row">
+          <input id="rememberEmail" type="checkbox" />
+          <span>Memorizar email neste dispositivo</span>
         </label>
 
         <button class="primary-btn full" id="loginBtn" type="button">Entrar</button>
@@ -388,6 +394,6 @@
   <div class="toast" id="toast"></div>
 
   <script src="./firebase-config.js?v=scrollfix-final"></script>
-  <script type="module" src="./app.js?v=reconstruido-limpo"></script>
+  <script type="module" src="./app.js?v=memorizar-email-sem-auto"></script>
 </body>
 </html>

@@ -786,3 +786,91 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Atividade real dos utilizadores */
+.user-chip.online,
+.user-chip.active,
+.user-chip.away,
+.user-chip.offline {
+  gap: 7px;
+}
+
+.online-dot,
+.active-dot,
+.away-dot,
+.offline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.online-dot {
+  background: #31d27c;
+  box-shadow: 0 0 0 6px rgba(49,210,124,.12), 0 0 18px rgba(49,210,124,.55);
+  animation: pulseOnline 1.5s ease-in-out infinite;
+}
+
+.active-dot {
+  background: #4de3ff;
+  box-shadow: 0 0 0 6px rgba(77,227,255,.12), 0 0 18px rgba(77,227,255,.45);
+}
+
+.away-dot {
+  background: #ffb020;
+  box-shadow: 0 0 0 6px rgba(255,176,32,.12), 0 0 18px rgba(255,176,32,.42);
+}
+
+.offline-dot {
+  background: #8b6b92;
+  box-shadow: 0 0 0 6px rgba(139,107,146,.12);
+}
+
+.user-chip.online {
+  color: #9ff2c5;
+  border-color: rgba(49,210,124,.32);
+  background: rgba(49,210,124,.12);
+}
+
+.user-chip.active {
+  color: #b9f5ff;
+  border-color: rgba(77,227,255,.30);
+  background: rgba(77,227,255,.10);
+}
+
+.user-chip.away {
+  color: #ffd7a0;
+  border-color: rgba(255,176,32,.30);
+  background: rgba(255,176,32,.10);
+}
+
+.user-chip.offline {
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+@keyframes pulseOnline {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(.72); opacity: .65; }
+}
+
+
+/* Login: memorizar só email */
+.remember-row {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 6px;
+  color: #d9b6df;
+  font-weight: 850;
+  user-select: none;
+}
+
+.remember-row input {
+  width: 18px !important;
+  height: 18px !important;
+  accent-color: #ff9500;
+  flex: 0 0 auto;
+}

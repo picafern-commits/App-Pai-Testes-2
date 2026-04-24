@@ -20,7 +20,9 @@ import {
   signOut,
   onAuthStateChanged,
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  setPersistence,
+  browserSessionPersistence
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 console.log("[Brinka] app.js limpo carregado");
@@ -47,6 +49,7 @@ const state = {
   firebase: false,
   unsubscribe: null,
   usersUnsubscribe: null,
+  activityRefreshTimer: null,
   presenceTimer: null,
   user: null,
   profile: null
@@ -166,6 +169,7 @@ async function initFirebaseCore() {
     const app = initializeApp(window.BRINKA_FIREBASE_CONFIG);
     state.db = getFirestore(app);
     state.auth = getAuth(app);
+    await setPersistence(state.auth, browserSessionPersistence);
     try { await enableIndexedDbPersistence(state.db); } catch {}
     state.firebase = true;
     return true;
@@ -266,7 +270,10 @@ async function afterLogin(user) {
     renderAll();
     await startStoreListener();
     startPresenceSystem();
-    if (isAdmin()) startUsersOnlineListener();
+    if (isAdmin()) {
+      startUsersOnlineListener();
+      startActivityRefresh();
+    }
 
     toast(`Bem-vindo, ${state.profile.nome || user.email}`);
   } catch (error) {
@@ -300,36 +307,54 @@ async function doLogout() {
 }
 
 function isUserOnline(user) {
-  return Boolean(user?.lastSeenMs) && (Date.now() - Number(user.lastSeenMs)) < (5 * 60 * 1000);
+  return Boolean(user?.lastSeenMs) && (Date.now() - Number(user.lastSeenMs)) < (2 * 60 * 1000);
 }
 
 function lastSeenText(user) {
   if (!user?.lastSeenMs) return "Nunca online";
-  const diff = Date.now() - Number(user.lastSeenMs);
-  const min = Math.floor(diff / 60000);
-  if (diff < 10000) return "Online agora";
-  if (min < 1) return "Online há segundos";
+
+  const diff = Math.max(0, Date.now() - Number(user.lastSeenMs));
+  const sec = Math.floor(diff / 1000);
+  const min = Math.floor(sec / 60);
+  const hours = Math.floor(min / 60);
+  const days = Math.floor(hours / 24);
+
+  if (sec < 20) return "Online agora";
+  if (min < 2) return "Ativo agora";
+  if (min < 10) return `Ausente há ${min} min`;
   if (min < 60) return `Visto há ${min} min`;
-  return `Visto há ${Math.floor(min / 60)}h`;
+  if (hours < 24) return `Visto há ${hours}h`;
+  return `Visto há ${days}d`;
 }
 
 function presenceClass(user) {
-  if (isUserOnline(user)) return "online";
   if (!user?.lastSeenMs) return "offline";
+
   const diff = Date.now() - Number(user.lastSeenMs);
+
+  if (diff < 20 * 1000) return "online";
+  if (diff < 2 * 60 * 1000) return "active";
   if (diff < 10 * 60 * 1000) return "away";
   return "offline";
 }
 
 async function updateMyPresence(isOnline = true) {
   if (!state.db || !state.user) return;
+
+  const activePage = document.querySelector(".page.active")?.id?.replace("page-", "") || "dashboard";
+  const device = /iPhone|iPad|Android/i.test(navigator.userAgent)
+    ? "mobile"
+    : "desktop/web";
+
   try {
     await setDoc(doc(state.db, "users", state.user.uid), {
       online: isOnline,
       lastSeenMs: Date.now(),
       updatedAt: Date.now(),
       currentLojaId: getActiveStoreId(),
-      currentLojaName: getActiveStoreName()
+      currentLojaName: getActiveStoreName(),
+      currentPage: activePage,
+      device
     }, { merge: true });
   } catch (error) {
     console.warn("[Brinka] Presence erro:", error);
@@ -794,6 +819,7 @@ function switchPage(page) {
   };
   if ($("pageKicker")) $("pageKicker").textContent = titles[page]?.[0] || "Brinka";
   if ($("pageTitle")) $("pageTitle").textContent = titles[page]?.[1] || "Brinka";
+  updateMyPresence(true).catch(() => {});
   $("sidebar")?.classList.remove("open");
   $("overlay")?.classList.remove("show");
 }
@@ -824,6 +850,16 @@ function exportCsv() {
   link.download = `brinka-${getActiveStoreId()}-historico.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+
+function startActivityRefresh() {
+  if (state.activityRefreshTimer) clearInterval(state.activityRefreshTimer);
+  state.activityRefreshTimer = setInterval(() => {
+    if (isAdmin() && document.querySelector("#page-users.active")) {
+      loadUsers();
+    }
+  }, 10000);
 }
 
 function startUsersOnlineListener() {
@@ -867,7 +903,9 @@ function renderUsersList(users) {
         </div>
         <div class="user-chip-row">
           <span class="user-chip ${pClass}"><span class="${pClass}-dot"></span>${lastSeenText(u)}</span>
-          <span class="user-chip">Loja: ${lojaName}</span>
+          <span class="user-chip">Loja: ${u.currentLojaName || lojaName}</span>
+          <span class="user-chip">Página: ${u.currentPage || "—"}</span>
+          <span class="user-chip">Dispositivo: ${u.device || "—"}</span>
           <span class="user-chip">${u.ativo === false ? "Bloqueado" : "Ativo"}</span>
         </div>
         <div class="user-actions">
