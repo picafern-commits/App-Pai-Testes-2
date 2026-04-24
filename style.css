@@ -874,3 +874,46 @@ body {
   accent-color: #ff9500;
   flex: 0 0 auto;
 }
+
+
+/* iPhone: corrigir input de data ao mesmo nível dos outros campos */
+@media (max-width: 850px) {
+  #closeDate {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    display: block !important;
+    text-align: left !important;
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  input[type="datetime-local"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  input[type="datetime-local"]::-webkit-date-and-time-value {
+    text-align: left;
+    min-height: 1.4em;
+  }
+
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    margin-left: 6px;
+  }
+
+  .form-grid label {
+    min-width: 0 !important;
+  }
+
+  .form-grid input,
+  .form-grid select,
+  .form-grid textarea {
+    max-width: 100% !important;
+  }
+}
