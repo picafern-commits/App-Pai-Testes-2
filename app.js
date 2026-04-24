@@ -1,9 +1,4 @@
 console.log("[Brinka] login fix loaded");
-function loadRememberedEmail() {
-  const saved = localStorage.getItem("brinka_remember_email") || "";
-  if ($("loginEmail") && saved) $("loginEmail").value = saved;
-  if ($("rememberEmail")) $("rememberEmail").checked = Boolean(saved);
-}
 
 
 
@@ -18,103 +13,16 @@ function getPresenceState(user) {
   return "offline";
 }
 
-function lastSeenText(user) {
-  if (!user.lastSeenMs) return "Nunca online";
 
-  const diff = Date.now() - user.lastSeenMs;
-  const sec = Math.floor(diff / 1000);
-  const min = Math.floor(sec / 60);
-  const h = Math.floor(min / 60);
+async 
 
-  if (sec < 10) return "Online agora";
-  if (sec < 60) return "Ativo há segundos";
-  if (min < 60) return `Visto há ${min} min`;
-  if (h < 24) return `Visto há ${h}h`;
-
-  return "Offline";
-}
-
-async function updateMyPresence(isOnline = true) {
-  if (!state.db || !state.user) return;
-
-  try {
-    await setDoc(doc(state.db, "users", state.user.uid), {
-      lastSeenMs: Date.now(),
-      active: isOnline,
-      loja: getActiveStoreName(),
-      device: navigator.userAgent.includes("Electron") ? "desktop" : "web"
-    }, { merge: true });
-
-  } catch (e) {
-    console.warn("Presence erro:", e);
-  }
-}
-
-function startPresenceSystem() {
-  updateMyPresence(true);
-
-  if (state.presenceTimer) clearInterval(state.presenceTimer);
-
-  state.presenceTimer = setInterval(() => {
-    updateMyPresence(true);
-  }, 4000);
-
-  document.addEventListener("visibilitychange", () => {
-    updateMyPresence(document.visibilityState === "visible");
-  });
-
-  window.addEventListener("beforeunload", () => {
-    updateMyPresence(false);
-  });
-}
 
 
 // ===== ONLINE DEFINITIVO =====
-function isUserOnline(user) {
-  if (!user.lastSeenMs) return false;
-  const diff = Date.now() - user.lastSeenMs;
-  return diff < (5 * 60 * 1000);
-}
 
-function lastSeenText(user) {
-  if (!user.lastSeenMs) return "Nunca online";
-  const diff = Date.now() - user.lastSeenMs;
-  const min = Math.floor(diff / 60000);
-  if (diff < 10000) return "Online agora";
-  if (min < 1) return "Online há segundos";
-  if (min < 60) return `Visto há ${min} min`;
-  const h = Math.floor(min / 60);
-  return `Visto há ${h}h`;
-}
 
-async function updateMyPresence(isOnline = true) {
-  if (!state.db || !state.user) return;
+async 
 
-  try {
-    await setDoc(doc(state.db, "users", state.user.uid), {
-      online: isOnline,
-      lastSeenMs: Date.now(),
-      updatedAt: Date.now()
-    }, { merge: true });
-
-  } catch (error) {
-    console.warn("Erro presence:", error);
-  }
-}
-
-function startPresenceSystem() {
-  updateMyPresence(true);
-
-  if (state.presenceTimer) clearInterval(state.presenceTimer);
-
-  state.presenceTimer = setInterval(() => {
-    updateMyPresence(true);
-  }, 5000);
-
-  window.addEventListener("beforeunload", () => {
-    updateMyPresence(false);
-  });
-}
 
 console.log("[Brinka] app.js carregado - fix scroll/login");
 /* iPhone app total: bloquear zoom/double tap e manter só scroll vertical */
@@ -137,6 +45,93 @@ document.addEventListener("touchmove", function (event) {
 }, { passive: false });
 
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+
+
+function loadRememberedEmail() {
+  const saved = localStorage.getItem("brinka_remember_email") || "";
+  if ($("loginEmail") && saved) $("loginEmail").value = saved;
+  if ($("rememberEmail")) $("rememberEmail").checked = Boolean(saved);
+}
+
+async function doLogin() {
+  const emailInput = $("loginEmail");
+  const passInput = $("loginPassword");
+  const err = $("loginError");
+
+  const email = emailInput ? emailInput.value.trim() : "";
+  const password = passInput ? passInput.value : "";
+
+  if (!email || !password) {
+    if (err) err.textContent = "Mete email e password.";
+    return;
+  }
+
+  if ($("rememberEmail")) {
+    if ($("rememberEmail").checked) localStorage.setItem("brinka_remember_email", email);
+    else localStorage.removeItem("brinka_remember_email");
+  }
+
+  if (err) err.textContent = "A entrar...";
+
+  try {
+    if (!state.auth) {
+      if (err) err.textContent = "Firebase Auth ainda não carregou. Recarrega a página.";
+      return;
+    }
+
+    await signInWithEmailAndPassword(state.auth, email, password);
+  } catch (error) {
+    console.error("[Brinka] Erro login:", error);
+    if (!err) return;
+
+    if (["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"].includes(error.code)) {
+      err.textContent = "Email ou password inválidos.";
+    } else if (error.code === "auth/too-many-requests") {
+      err.textContent = "Demasiadas tentativas. Tenta mais tarde.";
+    } else {
+      err.textContent = "Erro no login: " + (error.code || "Firebase");
+    }
+  }
+}
+
+function isUserOnline(user) {
+  if (!user || !user.lastSeenMs) return false;
+  return (Date.now() - Number(user.lastSeenMs)) < (5 * 60 * 1000);
+}
+
+function lastSeenText(user) {
+  if (!user || !user.lastSeenMs) return "Nunca online";
+  const diff = Date.now() - Number(user.lastSeenMs);
+  const min = Math.floor(diff / 60000);
+  if (diff < 10000) return "Online agora";
+  if (min < 1) return "Online há segundos";
+  if (min < 60) return `Visto há ${min} min`;
+  return `Visto há ${Math.floor(min / 60)}h`;
+}
+
+async function updateMyPresence(isOnline = true) {
+  if (!state.db || !state.user) return;
+  try {
+    await setDoc(doc(state.db, "users", state.user.uid), {
+      online: isOnline,
+      lastSeenMs: Date.now(),
+      updatedAt: Date.now()
+    }, { merge: true });
+  } catch (error) {
+    console.warn("[Brinka] Presence erro:", error);
+  }
+}
+
+function startPresenceSystem() {
+  updateMyPresence(true);
+  if (state.presenceTimer) clearInterval(state.presenceTimer);
+  state.presenceTimer = setInterval(() => updateMyPresence(true), 5000);
+  window.addEventListener("beforeunload", () => updateMyPresence(false));
+}
+
+
+
+
 import {
   getFirestore, collection, addDoc, deleteDoc, doc, setDoc, getDoc, getDocs, serverTimestamp, query, orderBy, onSnapshot, enableIndexedDbPersistence
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -1266,37 +1261,7 @@ function exportCsv() {
   URL.revokeObjectURL(link.href);
 }
 
-async function doLogin() {
-  const email = $("loginEmail")?.value.trim();
-  const password = $("loginPassword")?.value;
-
-  if (!email || !password) {
-    if ($("loginError")) $("loginError").textContent = "Mete email e password.";
-    return;
-  }
-
-  if ($("rememberEmail")) {
-    if ($("rememberEmail").checked) localStorage.setItem("brinka_remember_email", email);
-    else localStorage.removeItem("brinka_remember_email");
-  }
-
-  if ($("loginError")) $("loginError").textContent = "A entrar...";
-
-  try {
-    await signInWithEmailAndPassword(state.auth, email, password);
-  } catch (error) {
-    console.error("[Brinka] Erro login:", error);
-    if ($("loginError")) {
-      if (["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"].includes(error.code)) {
-        $("loginError").textContent = "Email ou password inválidos.";
-      } else if (error.code === "auth/too-many-requests") {
-        $("loginError").textContent = "Demasiadas tentativas. Tenta mais tarde.";
-      } else {
-        $("loginError").textContent = "Erro no login. Verifica Firebase/Auth.";
-      }
-    }
-  }
-}
+async 
 
 async function doLogout() {
   try {
@@ -1441,3 +1406,20 @@ document.addEventListener("click", (event) => {
   }
 });
 
+
+
+// BRINKA_LOGIN_FALLBACK_FINAL
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest?.("#loginBtn");
+  if (btn) {
+    event.preventDefault();
+    doLogin();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && (event.target?.id === "loginEmail" || event.target?.id === "loginPassword")) {
+    event.preventDefault();
+    doLogin();
+  }
+});
