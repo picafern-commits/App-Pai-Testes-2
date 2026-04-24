@@ -686,3 +686,103 @@ body {
   color: var(--muted);
   border-color: var(--line);
 }
+
+/* ONLINE EMPRESA */
+.user-chip.online { color:#00ff9c; }
+.user-chip.active { color:#4de3ff; }
+.user-chip.away { color:#ffb020; }
+.user-chip.offline { color:#888; }
+
+.online-dot { background:#00ff9c; box-shadow:0 0 10px #00ff9c; }
+.active-dot { background:#4de3ff; }
+.away-dot { background:#ffb020; }
+.offline-dot { background:#555; }
+
+
+/* Diferenças inteligentes + Multi-Loja */
+.diff-ok {
+  color: #9ff2c5 !important;
+}
+
+.diff-warning {
+  color: #ffd7a0 !important;
+}
+
+.diff-danger {
+  color: #ffd0d7 !important;
+}
+
+.diff-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 950;
+  border: 1px solid var(--line);
+}
+
+.diff-badge.ok {
+  color: #9ff2c5;
+  background: rgba(49,210,124,.12);
+  border-color: rgba(49,210,124,.28);
+}
+
+.diff-badge.warning {
+  color: #ffd7a0;
+  background: rgba(255,149,0,.13);
+  border-color: rgba(255,149,0,.30);
+}
+
+.diff-badge.danger {
+  color: #ffd0d7;
+  background: rgba(255,92,114,.14);
+  border-color: rgba(255,92,114,.30);
+}
+
+.multi-store-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.store-summary-card {
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,.055);
+  display: grid;
+  gap: 10px;
+}
+
+.store-summary-card h4 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.store-summary-card strong {
+  font-size: 24px;
+  letter-spacing: -.04em;
+}
+
+.store-summary-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+@media (max-width: 1180px) {
+  .multi-store-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 850px) {
+  .multi-store-grid {
+    grid-template-columns: 1fr;
+  }
+}

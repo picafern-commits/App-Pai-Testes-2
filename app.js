@@ -1,3 +1,113 @@
+
+// ===== ONLINE NÍVEL EMPRESA =====
+function getPresenceState(user) {
+  if (!user.lastSeenMs) return "offline";
+  const diff = Date.now() - user.lastSeenMs;
+
+  if (diff < 15000) return "online";       // ativo agora
+  if (diff < 2 * 60 * 1000) return "active"; // ativo recente
+  if (diff < 10 * 60 * 1000) return "away";  // ausente
+  return "offline";
+}
+
+function lastSeenText(user) {
+  if (!user.lastSeenMs) return "Nunca online";
+
+  const diff = Date.now() - user.lastSeenMs;
+  const sec = Math.floor(diff / 1000);
+  const min = Math.floor(sec / 60);
+  const h = Math.floor(min / 60);
+
+  if (sec < 10) return "Online agora";
+  if (sec < 60) return "Ativo há segundos";
+  if (min < 60) return `Visto há ${min} min`;
+  if (h < 24) return `Visto há ${h}h`;
+
+  return "Offline";
+}
+
+async function updateMyPresence(isOnline = true) {
+  if (!state.db || !state.user) return;
+
+  try {
+    await setDoc(doc(state.db, "users", state.user.uid), {
+      lastSeenMs: Date.now(),
+      active: isOnline,
+      loja: getActiveStoreName(),
+      device: navigator.userAgent.includes("Electron") ? "desktop" : "web"
+    }, { merge: true });
+
+  } catch (e) {
+    console.warn("Presence erro:", e);
+  }
+}
+
+function startPresenceSystem() {
+  updateMyPresence(true);
+
+  if (state.presenceTimer) clearInterval(state.presenceTimer);
+
+  state.presenceTimer = setInterval(() => {
+    updateMyPresence(true);
+  }, 4000);
+
+  document.addEventListener("visibilitychange", () => {
+    updateMyPresence(document.visibilityState === "visible");
+  });
+
+  window.addEventListener("beforeunload", () => {
+    updateMyPresence(false);
+  });
+}
+
+
+// ===== ONLINE DEFINITIVO =====
+function isUserOnline(user) {
+  if (!user.lastSeenMs) return false;
+  const diff = Date.now() - user.lastSeenMs;
+  return diff < (5 * 60 * 1000);
+}
+
+function lastSeenText(user) {
+  if (!user.lastSeenMs) return "Nunca online";
+  const diff = Date.now() - user.lastSeenMs;
+  const min = Math.floor(diff / 60000);
+  if (diff < 10000) return "Online agora";
+  if (min < 1) return "Online há segundos";
+  if (min < 60) return `Visto há ${min} min`;
+  const h = Math.floor(min / 60);
+  return `Visto há ${h}h`;
+}
+
+async function updateMyPresence(isOnline = true) {
+  if (!state.db || !state.user) return;
+
+  try {
+    await setDoc(doc(state.db, "users", state.user.uid), {
+      online: isOnline,
+      lastSeenMs: Date.now(),
+      updatedAt: Date.now()
+    }, { merge: true });
+
+  } catch (error) {
+    console.warn("Erro presence:", error);
+  }
+}
+
+function startPresenceSystem() {
+  updateMyPresence(true);
+
+  if (state.presenceTimer) clearInterval(state.presenceTimer);
+
+  state.presenceTimer = setInterval(() => {
+    updateMyPresence(true);
+  }, 5000);
+
+  window.addEventListener("beforeunload", () => {
+    updateMyPresence(false);
+  });
+}
+
 console.log("[Brinka] app.js carregado - fix scroll/login");
 /* iPhone app total: bloquear zoom/double tap e manter só scroll vertical */
 let brinkaLastTouchEnd = 0;
@@ -451,6 +561,8 @@ async function saveClosure() {
 
   const calc = calculate();
 
+  if (!validateDiffBeforeSave(calc)) return;
+
   if (calc.total <= 0) {
     toast("Mete valores antes de guardar");
     return;
@@ -471,6 +583,8 @@ async function saveClosure() {
     role: state.profile?.role || "user",
     expected: calc.expected,
     diff: calc.diff,
+    diffLevel: getDiffLevel(calc.diff),
+    diffLabel: getDiffLabel(calc.diff),
     total: calc.total,
     notesTotal: calc.notesTotal,
     coinsTotal: calc.coinsTotal,
@@ -528,26 +642,8 @@ function readLastSeenMs(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function isUserOnline(user) {
-  return Boolean(user.online) && (Date.now() - readLastSeenMs(user.lastSeen)) < onlineLimitMs();
-}
 
-async function updateMyPresence(isOnline = true) {
-  if (!state.db || !state.user) return;
-
-  try {
-    await setDoc(doc(state.db, "users", state.user.uid), {
-      online: isOnline,
-      lastSeen: serverTimestamp(),
-      currentLojaId: getActiveStoreId(),
-      currentLojaName: getActiveStoreName(),
-      userAgent: navigator.userAgent,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-  } catch (error) {
-    console.warn("Presença não atualizada:", error);
-  }
-}
+async }
 
 function startPresenceHeartbeat() {
   if (state.presenceTimer) clearInterval(state.presenceTimer);
@@ -624,7 +720,7 @@ function renderUsersList(users) {
 
   $("usersList").innerHTML = users.map(user => {
     const lojaName = storeProfiles.find(s => s.id === user.lojaId)?.name || user.lojaId || "—";
-    const online = isUserOnline(user);
+    const statePresence = getPresenceState(user);
     const lastSeenLabel = readLastSeenMs(user.lastSeen)
       ? new Date(readLastSeenMs(user.lastSeen)).toLocaleString("pt-PT", { dateStyle: "short", timeStyle: "short" })
       : "Nunca";
@@ -641,7 +737,7 @@ function renderUsersList(users) {
         </div>
 
         <div class="user-chip-row">
-          <span class="user-chip ${online ? "online" : "offline"}">${online ? "Online" : "Offline"}</span>
+          <span class="user-chip ${online ? "online" : "offline"}">${lastSeenText(user)}</span>
           <span class="user-chip">Loja: ${lojaName}</span>
           <span class="user-chip">${user.ativo === false ? "Bloqueado" : "Ativo"}</span>
           <span class="user-chip">Visto: ${lastSeenLabel}</span>
@@ -898,6 +994,82 @@ function renderSmartDashboard() {
   }
 }
 
+
+function getDiffLevel(diff) {
+  const value = Math.abs(Number(diff || 0));
+  if (value < 0.005) return "ok";
+  if (value <= 5) return "warning";
+  return "danger";
+}
+
+function getDiffLabel(diff) {
+  const level = getDiffLevel(diff);
+  if (level === "ok") return "Certo";
+  if (level === "warning") return "Diferença pequena";
+  return "Diferença grave";
+}
+
+function validateDiffBeforeSave(calc) {
+  const diffAbs = Math.abs(Number(calc.diff || 0));
+  const obs = $("obs")?.value.trim() || "";
+
+  if (diffAbs >= 0.005 && obs.length < 3) {
+    toast("Tens diferença de caixa. Mete uma observação antes de guardar.");
+    if ($("obs")) {
+      $("obs").focus();
+      $("obs").style.borderColor = "rgba(255,92,114,.75)";
+      $("obs").style.boxShadow = "0 0 0 4px rgba(255,92,114,.12)";
+    }
+    return false;
+  }
+
+  if ($("obs")) {
+    $("obs").style.borderColor = "";
+    $("obs").style.boxShadow = "";
+  }
+
+  if (diffAbs > 20 && !confirm(`Diferença grave de ${eur(diffAbs)}. Queres mesmo guardar este fecho?`)) {
+    return false;
+  }
+
+  return true;
+}
+
+async function renderMultiLojaResumo() {
+  if (!$("multiStoreGrid") || !isAdmin() || !state.db) return;
+
+  try {
+    const cards = [];
+
+    for (const store of storeProfiles) {
+      const snap = await getDocs(collection(state.db, "brinka_lojas", store.id, "fechos"));
+      const items = snap.docs.map(d => d.data());
+
+      const today = new Date().toLocaleDateString("pt-PT");
+      const todayItems = items.filter(item => item.dateIso && new Date(item.dateIso).toLocaleDateString("pt-PT") === today);
+
+      const totalHoje = todayItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
+      const diffHoje = todayItems.reduce((sum, item) => sum + Number(item.diff || 0), 0);
+      const erros = items.filter(item => Math.abs(Number(item.diff || 0)) >= 0.005).length;
+
+      cards.push(`
+        <div class="store-summary-card">
+          <h4>${store.name}</h4>
+          <strong>${eur(totalHoje)}</strong>
+          <div class="store-summary-line"><span>Fechos hoje</span><b>${todayItems.length}</b></div>
+          <div class="store-summary-line"><span>Diferença hoje</span><b class="${getDiffLevel(diffHoje) === "danger" ? "diff-danger" : getDiffLevel(diffHoje) === "warning" ? "diff-warning" : "diff-ok"}">${eur(diffHoje)}</b></div>
+          <div class="store-summary-line"><span>Fechos com diferença</span><b>${erros}</b></div>
+        </div>
+      `);
+    }
+
+    $("multiStoreGrid").innerHTML = cards.join("");
+  } catch (error) {
+    console.error(error);
+    $("multiStoreGrid").innerHTML = `<p class="muted">Não foi possível carregar o resumo multi-loja. Verifica permissões Firebase.</p>`;
+  }
+}
+
 function renderDashboard() {
   const today = new Date().toLocaleDateString("pt-PT");
   const todayItems = state.closures.filter(item => item.dateIso && new Date(item.dateIso).toLocaleDateString("pt-PT") === today);
@@ -920,7 +1092,7 @@ function renderDashboard() {
     $("recentClosures").innerHTML = state.closures.slice(0, 6).map(item => `
       <div class="list-item">
         <div><strong>${eur(item.total)}</strong><br><span class="muted">${item.dateLabel} · ${item.operator || "Sem utilizador"}</span></div>
-        <div style="text-align:right"><b>${getStatus(item.diff)}</b><br><span class="muted">${eur(item.diff)}</span></div>
+        <div style="text-align:right"><b>${getDiffLabel(item.diff)}</b><br><span class="muted">${eur(item.diff)}</span></div>
       </div>
     `).join("") || `<p class="muted">Ainda não existem fechos guardados nesta loja.</p>`;
   }
@@ -946,7 +1118,7 @@ function renderHistory() {
         <td>${item.operator || "—"}</td>
         <td><b>${eur(item.total)}</b></td>
         <td>${eur(item.expected)}</td>
-        <td>${eur(item.diff)}</td>
+        <td><span class="diff-badge ${getDiffLevel(item.diff)}">${eur(item.diff)} · ${getDiffLabel(item.diff)}</span></td>
         <td><button class="delete-row" data-delete="${id}">Apagar</button></td>
       </tr>
     `;
@@ -1006,6 +1178,7 @@ function renderSettings() {
 
 function renderAll() {
   renderDashboard();
+  renderMultiLojaResumo();
   renderSmartDashboard();
   renderHistory();
   renderReports();
@@ -1057,7 +1230,7 @@ async function changeActiveStore(storeId) {
   state.closures = JSON.parse(localStorage.getItem(`brinka_roles_closures_${getActiveStoreId()}`) || "[]");
   renderAll();
   await startStoreListener();
-    startPresenceHeartbeat();
+    startPresenceSystem();
     if (isAdmin()) startUsersOnlineListener();
   toast(`Loja ativa: ${getActiveStoreName()}`);
 }
