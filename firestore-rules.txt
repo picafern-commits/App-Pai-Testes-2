@@ -30,8 +30,8 @@ service cloud.firestore {
 
     match /brinka_lojas/{lojaId}/fechos/{docId} {
       allow read: if signedIn() && (isAdmin() || sameStore(lojaId));
-      allow create: if signedIn() && (isWorker() && sameStore(lojaId));
-      allow update, delete: if signedIn() && (isWorker() && sameStore(lojaId));
+      allow create: if signedIn() && (isWorker() && (isAdmin() || sameStore(lojaId)));
+      allow update, delete: if signedIn() && (isWorker() && (isAdmin() || sameStore(lojaId)));
     }
 
     match /brinka_lojas/{lojaId}/backups_diarios/{docId} {

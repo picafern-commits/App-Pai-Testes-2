@@ -1,3 +1,10 @@
+console.log("[Brinka] login fix loaded");
+function loadRememberedEmail() {
+  const saved = localStorage.getItem("brinka_remember_email") || "";
+  if ($("loginEmail") && saved) $("loginEmail").value = saved;
+  if ($("rememberEmail")) $("rememberEmail").checked = Boolean(saved);
+}
+
 
 // ===== ONLINE NÍVEL EMPRESA =====
 function getPresenceState(user) {
@@ -130,8 +137,7 @@ document.addEventListener("touchmove", function (event) {
 
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
-  getFirestore, collection, addDoc, deleteDoc, doc, setDoc, getDoc, getDocs,
-  serverTimestamp, query, orderBy, onSnapshot, enableIndexedDbPersistence
+  getFirestore, collection, addDoc, deleteDoc, doc, setDoc, getDoc, getDocs, serverTimestamp, query, orderBy, onSnapshot, enableIndexedDbPersistence
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, sendPasswordResetEmail
@@ -1264,17 +1270,30 @@ async function doLogin() {
   const password = $("loginPassword")?.value;
 
   if (!email || !password) {
-    $("loginError").textContent = "Mete email e password.";
+    if ($("loginError")) $("loginError").textContent = "Mete email e password.";
     return;
   }
 
-  $("loginError").textContent = "A entrar...";
+  if ($("rememberEmail")) {
+    if ($("rememberEmail").checked) localStorage.setItem("brinka_remember_email", email);
+    else localStorage.removeItem("brinka_remember_email");
+  }
+
+  if ($("loginError")) $("loginError").textContent = "A entrar...";
 
   try {
     await signInWithEmailAndPassword(state.auth, email, password);
   } catch (error) {
-    console.error(error);
-    $("loginError").textContent = "Login inválido ou sem permissão.";
+    console.error("[Brinka] Erro login:", error);
+    if ($("loginError")) {
+      if (error.code === "auth/invalid-credential" || error.code === "auth/wrong-password" || error.code === "auth/user-not-found") {
+        $("loginError").textContent = "Email ou password inválidos.";
+      } else if (error.code === "auth/too-many-requests") {
+        $("loginError").textContent = "Demasiadas tentativas. Tenta mais tarde.";
+      } else {
+        $("loginError").textContent = "Erro no login. Verifica Firebase/Auth.";
+      }
+    }
   }
 }
 
@@ -1388,6 +1407,7 @@ async function init() {
   buildMoneyRows("notesRows", noteValues);
   buildMoneyRows("coinsRows", coinValues);
   bindEvents();
+  loadRememberedEmail();
 
   setNowDate();
   calculate();
