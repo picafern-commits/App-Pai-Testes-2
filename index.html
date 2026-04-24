@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#5b0b68" />
   <title>Brinka Firebase — Fecho de Caixa</title>
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="./style.css?v=dashboard-inteligente" />
+  <link rel="stylesheet" href="./style.css?v=users-online" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Brinka" />
@@ -362,6 +362,7 @@
             <article class="panel">
               <div class="panel-title">
                 <h3>Utilizadores</h3>
+                <span class="pill" id="onlineSummary">Online: 0</span>
                 <button class="soft-btn" id="refreshUsers" type="button">Atualizar</button>
               </div>
 
@@ -378,6 +379,6 @@
   <div class="toast" id="toast"></div>
 
   <script src="./firebase-config.js?v=scrollfix-final"></script>
-  <script type="module" src="./app.js?v=dashboard-inteligente"></script>
+  <script type="module" src="./app.js?v=users-online"></script>
 </body>
 </html>

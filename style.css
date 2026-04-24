@@ -600,3 +600,39 @@ body {
 .insight-item p { margin:0; color:var(--muted); line-height:1.35; }
 @media (max-width:1180px){ .intel-grid{grid-template-columns:repeat(2,1fr);} }
 @media (max-width:850px){ .intel-grid{grid-template-columns:1fr;} .bar-chart{gap:6px;} .bar-label{font-size:10px;} }
+
+
+/* Utilizadores online */
+.online-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  background: #31d27c;
+  box-shadow: 0 0 0 6px rgba(49,210,124,.12);
+}
+
+.offline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  background: #8b6b92;
+  box-shadow: 0 0 0 6px rgba(139,107,146,.12);
+}
+
+.user-online-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-chip.online {
+  color: #9ff2c5;
+  border-color: rgba(49,210,124,.26);
+  background: rgba(49,210,124,.10);
+}
+
+.user-chip.offline {
+  color: var(--muted);
+}

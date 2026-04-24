@@ -55,7 +55,8 @@ const state = {
   unsubscribe: null,
   user: null,
   profile: null,
-  appStarted: false
+  appStarted: false,
+  presenceTimer: null
 };
 
 const $ = (id) => document.getElementById(id);
@@ -513,6 +514,59 @@ async function deleteClosure(id) {
 }
 
 
+
+function onlineLimitMs() {
+  return 2 * 60 * 1000;
+}
+
+function readLastSeenMs(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.seconds === "number") return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isUserOnline(user) {
+  return Boolean(user.online) && (Date.now() - readLastSeenMs(user.lastSeen)) < onlineLimitMs();
+}
+
+async function updateMyPresence(isOnline = true) {
+  if (!state.db || !state.user) return;
+
+  try {
+    await setDoc(doc(state.db, "users", state.user.uid), {
+      online: isOnline,
+      lastSeen: serverTimestamp(),
+      currentLojaId: getActiveStoreId(),
+      currentLojaName: getActiveStoreName(),
+      userAgent: navigator.userAgent,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch (error) {
+    console.warn("Presença não atualizada:", error);
+  }
+}
+
+function startPresenceHeartbeat() {
+  if (state.presenceTimer) clearInterval(state.presenceTimer);
+
+  updateMyPresence(true);
+  state.presenceTimer = setInterval(() => {
+    updateMyPresence(true);
+    if (isAdmin() && $("usersList")) loadUsers();
+  }, 30000);
+
+  window.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") updateMyPresence(true);
+    else updateMyPresence(false);
+  });
+
+  window.addEventListener("beforeunload", () => {
+    updateMyPresence(false);
+  });
+}
+
 function renderAdminVisibility() {
   document.querySelectorAll(".admin-only").forEach(el => {
     el.classList.toggle("hidden-admin", !isAdmin());
@@ -550,10 +604,14 @@ async function loadUsers() {
   try {
     const snap = await getDocs(usersCollection());
     const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+    const onlineCount = users.filter(isUserOnline).length;
+    if ($("onlineSummary")) $("onlineSummary").textContent = `Online: ${onlineCount}`;
 
     if ($("usersList")) {
       $("usersList").innerHTML = users.map(user => {
         const lojaName = storeProfiles.find(s => s.id === user.lojaId)?.name || user.lojaId || "—";
+        const online = isUserOnline(user);
+        const lastSeenLabel = readLastSeenMs(user.lastSeen) ? new Date(readLastSeenMs(user.lastSeen)).toLocaleString("pt-PT", { dateStyle: "short", timeStyle: "short" }) : "Nunca";
         return `
           <div class="user-card">
             <div class="user-card-top">
@@ -567,7 +625,9 @@ async function loadUsers() {
             <div class="user-chip-row">
               <span class="user-chip">Loja: ${lojaName}</span>
               <span class="user-chip role-${user.role || "user"}">Role: ${user.role || "user"}</span>
+              <span class="user-chip ${online ? "online" : "offline"}">${online ? "Online" : "Offline"}</span>
               <span class="user-chip">${user.ativo === false ? "Bloqueado" : "Ativo"}</span>
+              <span class="user-chip">Visto: ${lastSeenLabel}</span>
             </div>
             <div class="user-actions">
               <button class="mini-btn" data-edit-user="${user.uid}">Editar</button>
@@ -969,6 +1029,7 @@ async function changeActiveStore(storeId) {
   state.closures = JSON.parse(localStorage.getItem(`brinka_roles_closures_${getActiveStoreId()}`) || "[]");
   renderAll();
   await startStoreListener();
+    startPresenceHeartbeat();
   toast(`Loja ativa: ${getActiveStoreName()}`);
 }
 
@@ -1017,6 +1078,9 @@ async function doLogin() {
 
 async function doLogout() {
   try {
+    await updateMyPresence(false);
+    if (state.presenceTimer) clearInterval(state.presenceTimer);
+    state.presenceTimer = null;
     if (state.unsubscribe) state.unsubscribe();
     state.unsubscribe = null;
     await signOut(state.auth);
