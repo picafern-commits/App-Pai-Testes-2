@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#5b0b68" />
-  <title>Brinka Firebase — Fecho de Caixa</title>
+  <title>Desktop - Brinka Firebase — Fecho de Caixa</title>
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="./style.css?v=online-premium" />
+  <link rel="stylesheet" href="./style.css?v=reconstruido-limpo" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Brinka" />
@@ -147,6 +147,15 @@
             <div class="insights-list" id="smartInsights"></div>
           </article>
 
+
+          <article class="panel admin-page" id="multiLojaPanel">
+            <div class="panel-title">
+              <h3>Resumo Multi-Loja</h3>
+              <span class="pill">Admin</span>
+            </div>
+            <div class="multi-store-grid" id="multiStoreGrid"></div>
+          </article>
+
         </section>
 
         <section class="page" id="page-fecho">
@@ -167,7 +176,7 @@
 
                 <label class="wide-label">
                   <span>Observações</span>
-                  <textarea id="obs" rows="3" placeholder="Notas internas do fecho..."></textarea>
+                  <textarea id="obs" rows="3" placeholder="Obrigatório se houver diferença de caixa..."></textarea>
                 </label>
               </article>
 
@@ -379,6 +388,6 @@
   <div class="toast" id="toast"></div>
 
   <script src="./firebase-config.js?v=scrollfix-final"></script>
-  <script type="module" src="./app.js?v=online-premium"></script>
+  <script type="module" src="./app.js?v=reconstruido-limpo"></script>
 </body>
 </html>
