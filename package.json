@@ -1,7 +1,7 @@
 {
-  "name": "brinka-desktop",
+  "name": "brinka-app-nativa-extremo",
   "version": "1.0.0",
-  "description": "Brinka - Fecho de Caixa Desktop",
+  "description": "Brinka Desktop - App Nativa Extremo",
   "main": "main.js",
   "author": "Brinka",
   "private": true,
@@ -15,15 +15,16 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.brinka.caixa",
+    "appId": "com.brinka.nativa.extremo",
     "productName": "Brinka",
     "directories": {
       "output": "dist"
     },
     "files": [
-      "**/*",
-      "!dist/**/*",
-      "!node_modules/.cache/**/*"
+      "main.js",
+      "splash.html",
+      "package.json",
+      "assets/**/*"
     ],
     "win": {
       "target": [

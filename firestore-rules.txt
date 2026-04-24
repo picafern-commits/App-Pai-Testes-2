@@ -1,46 +1,18 @@
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
+/*
+  BRINKA — FIREBASE MULTI-DISPOSITIVO + BACKUPS DIÁRIOS
 
-    function signedIn() {
-      return request.auth != null;
-    }
+  Firestore usado:
+  - brinka_fechos
+  - brinka_backups_diarios
+*/
 
-    function myUser() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
+window.BRINKA_FIREBASE_ENABLED = true;
 
-    function isAdmin() {
-      return signedIn() && myUser().role == "admin";
-    }
-
-    function isWorker() {
-      return signedIn() && myUser().role in ["admin", "gerente", "user"];
-    }
-
-    function sameStore(lojaId) {
-      return signedIn() && myUser().lojaId == lojaId;
-    }
-
-    match /users/{userId} {
-      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
-      allow create, delete: if isAdmin();
-      allow update: if signedIn() && (request.auth.uid == userId || isAdmin());
-    }
-
-    match /brinka_lojas/{lojaId}/fechos/{docId} {
-      allow read: if signedIn() && (isAdmin() || sameStore(lojaId));
-      allow create: if signedIn() && (isWorker() && sameStore(lojaId));
-      allow update, delete: if signedIn() && (isWorker() && sameStore(lojaId));
-    }
-
-    match /brinka_lojas/{lojaId}/backups_diarios/{docId} {
-      allow read, write: if signedIn() && (isAdmin() || sameStore(lojaId));
-    }
-
-    match /brinka_config/{docId} {
-      allow read: if signedIn();
-      allow write: if isAdmin();
-    }
-  }
-}
+window.BRINKA_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCxdAnxDKikfKyzAvV9RHxOk-FyJbgCqa0",
+  authDomain: "app-brinka.firebaseapp.com",
+  projectId: "app-brinka",
+  storageBucket: "app-brinka.firebasestorage.app",
+  messagingSenderId: "1030667180151",
+  appId: "1:1030667180151:web:a97f74baa1471220be8e72"
+};

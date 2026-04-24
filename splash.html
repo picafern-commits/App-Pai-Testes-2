@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    .splash {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+    }
+
+    .card {
+      width: 330px;
+      min-height: 220px;
+      border-radius: 34px;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(255,149,0,.25), transparent 14rem),
+        linear-gradient(145deg, rgba(54,0,68,.96), rgba(18,0,24,.96));
+      border: 1px solid rgba(255,255,255,.16);
+      box-shadow: 0 30px 90px rgba(0,0,0,.45);
+      display: grid;
+      place-items: center;
+      color: white;
+      text-align: center;
+      padding: 24px;
+    }
+
+    img {
+      width: 86px;
+      height: 86px;
+      border-radius: 26px;
+      margin-bottom: 12px;
+      box-shadow: 0 18px 44px rgba(0,0,0,.35);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 42px;
+      letter-spacing: -.06em;
+    }
+
+    p {
+      margin: 8px 0 0;
+      color: #d9b6df;
+      font-weight: 800;
+    }
+
+    .loader {
+      margin-top: 18px;
+      width: 160px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.12);
+      overflow: hidden;
+    }
+
+    .loader::before {
+      content: "";
+      display: block;
+      width: 45%;
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #ffc247, #ff9500);
+      animation: load 1.1s ease-in-out infinite;
+    }
+
+    @keyframes load {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(260%); }
+    }
+  </style>
+</head>
+<body>
+  <div class="splash">
+    <div class="card">
+      <div>
+        <img src="assets/brinka-logo.png" onerror="this.style.display='none'" />
+        <h1>Brinka</h1>
+        <p>A iniciar aplicação...</p>
+        <div class="loader"></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

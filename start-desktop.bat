@@ -1,5 +1,4 @@
 @echo off
-title Brinka Desktop
-echo A iniciar Brinka Desktop...
+title Brinka App Nativa Extremo
 npm start
 pause
